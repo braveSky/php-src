@@ -2763,7 +2763,7 @@ process_double:
 }
 /* }}} */
 
-static zend_always_inline void zend_memstr_sunday_pre(unsigned int td[], const char *needle, size_t needle_len) /* {{{ */ {
+static zend_always_inline void zend_memstr_ex_pre(unsigned int td[], const char *needle, size_t needle_len) /* {{{ */ {
 	int i;
 
 	for (i = 0; i < 256; i++) {
@@ -2776,7 +2776,11 @@ static zend_always_inline void zend_memstr_sunday_pre(unsigned int td[], const c
 }
 /* }}} */
 
-ZEND_API const char* zend_memnstr_sunday(const char *haystack, const char *needle, size_t needle_len, char *end) /* {{{ */
+/* 
+ * String matching - Sunday algorithm
+ * http://www.iti.fh-flensburg.de/lang/algorithmen/pattern/sundayen.htm
+ */
+ZEND_API const char* zend_memnstr_ex(const char *haystack, const char *needle, size_t needle_len, char *end) /* {{{ */
 {
 	unsigned int td[256];
 	register size_t i;
@@ -2786,7 +2790,7 @@ ZEND_API const char* zend_memnstr_sunday(const char *haystack, const char *needl
 		return NULL;
 	}
 
-	zend_memstr_sunday_pre(td, needle, needle_len);
+	zend_memstr_ex_pre(td, needle, needle_len);
 
 	p = (const unsigned char *)haystack;
 	end -= needle_len;
