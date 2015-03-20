@@ -7386,3 +7386,128 @@ ZEND_VM_HANDLER(157, ZEND_FETCH_CLASS_NAME, ANY, ANY)
 	}
 	ZEND_VM_NEXT_OPCODE();
 }
+
+ZEND_VM_HANDLER(171, ZEND_ROPE_INIT, ANY, CONST|CV|TMPVAR)
+{
+	USE_OPLINE
+	zval *rope = EX_VAR(opline->result.var);
+
+	array_init(rope);
+
+	if (OP2_TYPE == IS_CONST) {
+		zend_string_addref(Z_STR_P(EX_CONSTANT(opline->op2)));
+		zend_hash_next_index_insert_new(Z_ARRVAL_P(rope), EX_CONSTANT(opline->op2));
+	} else {
+		zend_free_op free_op2;
+		zval  var_copy;
+		zval *var = GET_OP2_ZVAL_PTR(BP_VAR_R);
+		int use_copy = 0;
+
+		SAVE_OPLINE();
+
+		if (Z_TYPE_P(var) != IS_STRING) {
+			use_copy = zend_make_printable_zval(var, &var_copy);
+
+			if (use_copy) {
+				var = &var_copy;
+				FREE_OP2();
+			} 
+		} else if (OP2_TYPE == IS_CV) {
+			zend_string_addref(Z_STR_P(var));
+		}
+
+		zend_hash_next_index_insert_new(Z_ARRVAL_P(rope), var);
+	}
+
+	CHECK_EXCEPTION();
+	ZEND_VM_NEXT_OPCODE();
+}
+
+ZEND_VM_HANDLER(172, ZEND_ROPE_ADD_STRING, UNUSED, CONST)
+{
+	USE_OPLINE
+
+	zval *rope = EX_VAR(opline->result.var);
+
+	zend_string_addref(Z_STR_P(EX_CONSTANT(opline->op2)));
+	zend_hash_next_index_insert_new(Z_ARRVAL_P(rope), EX_CONSTANT(opline->op2));
+
+	ZEND_VM_NEXT_OPCODE();
+}
+
+ZEND_VM_HANDLER(173, ZEND_ROPE_ADD_VAR, UNUSED, TMPVAR|CV)
+{
+	USE_OPLINE
+	zend_free_op free_op2;
+	zval  var_copy;
+	zval *rope = EX_VAR(opline->result.var);
+	zval *var = GET_OP2_ZVAL_PTR(BP_VAR_R);
+	int use_copy = 0;
+
+	SAVE_OPLINE();
+
+	if (Z_TYPE_P(var) != IS_STRING) {
+		use_copy = zend_make_printable_zval(var, &var_copy);
+
+		if (use_copy) {
+			var = &var_copy;
+			FREE_OP2();
+		} 
+	} else if (OP2_TYPE == IS_CV) {
+		zend_string_addref(Z_STR_P(var));
+	}
+
+	zend_hash_next_index_insert_new(Z_ARRVAL_P(rope), var);
+
+	CHECK_EXCEPTION();
+	ZEND_VM_NEXT_OPCODE();
+}
+
+ZEND_VM_HANDLER(174, ZEND_ROPE_END, ANY, CONST|TMPVAR|CV)
+{
+	USE_OPLINE
+	zval *var;
+	zend_string *ret;
+	zend_string *last;
+	char *target;
+	size_t target_len = 0;
+	zval *rope = EX_VAR(opline->result.var);
+
+	ZEND_HASH_FOREACH_VAL(Z_ARRVAL_P(rope), var) {
+		ZEND_ASSERT(Z_TYPE_P(var) == IS_STRING);
+		target_len += Z_STRLEN_P(var);
+	} ZEND_HASH_FOREACH_END();
+
+	if (OP2_TYPE == IS_CONST) {
+		last = Z_STR_P(EX_CONSTANT(opline->op2));
+	} else {
+		zend_free_op free_op2;
+		var = GET_OP2_ZVAL_PTR(BP_VAR_R);
+		SAVE_OPLINE();
+
+		last = zval_get_string(var);
+
+		FREE_OP2();
+	}
+	
+	target_len += last->len;
+	ret = zend_string_alloc(target_len, 0);
+
+	target = ret->val;
+	ZEND_HASH_FOREACH_VAL(Z_ARRVAL_P(rope), var) {
+		memcpy(target, Z_STRVAL_P(var), Z_STRLEN_P(var));
+		target += Z_STRLEN_P(var);
+	} ZEND_HASH_FOREACH_END();
+
+	memcpy(target, last->val, last->len + 1);
+
+	if (OP2_TYPE != IS_CONST) {
+		zend_string_release(last);
+	}
+
+	zval_dtor(rope);
+	ZVAL_NEW_STR(rope, ret);
+
+	CHECK_EXCEPTION();
+	ZEND_VM_NEXT_OPCODE();
+}
