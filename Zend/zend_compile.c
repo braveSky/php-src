@@ -5068,7 +5068,6 @@ void zend_compile_group_use(zend_ast *ast) /* {{{ */
 }
 /* }}} */
 
-
 void zend_compile_const_decl(zend_ast *ast) /* {{{ */
 {
 	zend_ast_list *list = zend_ast_get_list(ast);
@@ -5379,97 +5378,146 @@ static zend_bool zend_try_ct_eval_array(zval *result, zend_ast *ast) /* {{{ */
 }
 /* }}} */
 
-static void zend_compile_append_string(znode *result, zend_ast *ast, int first) /* {{{ */
+static void zend_compile_concat_rope(uint32_t var_num) /* {{{ */
+{
+	zend_op  *opline;
+	zend_op  *end = CG(active_op_array)->opcodes + (get_next_op_number(CG(active_op_array)) - 1);
+
+	ZEND_ASSERT(end->opcode == ZEND_CONCAT);
+	ZEND_ASSERT(var_num == end->result.var);
+	
+	opline = CG(active_op_array)->opcodes;
+	
+	while (opline < end) {
+		if (opline->opcode == ZEND_CONCAT &&
+		    opline->result.var == var_num) {
+			if (opline->op1_type != IS_UNUSED) {
+				/* first concat in chain */
+				opline->opcode = ZEND_ROPE_INIT;
+			} else if (opline->op2_type == IS_CONST) {
+				ZEND_ASSERT(Z_TYPE_P(CT_CONSTANT(opline->op2)) == IS_STRING);
+				SET_UNUSED(opline->op1);
+				opline->opcode = ZEND_ROPE_ADD_STRING;
+			} else {
+				SET_UNUSED(opline->op1);
+				opline->opcode = ZEND_ROPE_ADD_VAR;
+			}
+		} 
+		opline++;
+	}
+
+	SET_UNUSED(end->op1);
+	end->opcode = ZEND_ROPE_END;
+}
+/* }}} */
+
+static void zend_compile_concat_append(znode *result, zend_ast *ast) /* {{{ */
 {
 	znode elem_node;
 	zend_op *opline;
 
 	zend_compile_expr(&elem_node, ast);
-	if (elem_node.op_type == IS_CONST) {
-		zval zv;
-		zend_string *str = zval_get_string(&elem_node.u.constant);
 
-		if (str->len > 1) {
-			ZVAL_STR(&zv, str);
-			opline = get_next_op(CG(active_op_array));
-			opline->opcode = ZEND_ADD_STRING;
-			opline->op2_type = IS_CONST;
-			opline->op2.constant = zend_add_literal(CG(active_op_array), &zv);
-		} else if (str->len == 1) {
-			ZVAL_LONG(&zv, str->val[0]);
-			zend_string_release(str);
-			opline = get_next_op(CG(active_op_array));
-			opline->opcode = ZEND_ADD_CHAR;
-			opline->op2_type = IS_CONST;
-			opline->op2.constant = zend_add_literal(CG(active_op_array), &zv);
-		} else if (first) {
-			ZVAL_STR(&zv, str);
-			opline = get_next_op(CG(active_op_array));
-			opline->opcode = ZEND_ADD_STRING;
-			opline->op2_type = IS_CONST;
-			opline->op2.constant = zend_add_literal(CG(active_op_array), &zv);
-		} else {
-			/* String can be empty after a variable at the end of a heredoc */
-			zend_string_release(str);
+	if (elem_node.op_type == IS_CONST) {
+		convert_to_string(&elem_node.u.constant);
+
+		if (Z_STRLEN(elem_node.u.constant) == 0) {
 			zval_dtor(&elem_node.u.constant);
 			return;
 		}
-		zval_dtor(&elem_node.u.constant);
-	} else {
-		opline = get_next_op(CG(active_op_array));
-		opline->opcode = ZEND_ADD_VAR;
-		SET_NODE(opline->op2, &elem_node);
 	}
 
-	if (first) {
-		SET_UNUSED(opline->op1);
-	} else {
-		SET_NODE(opline->op1, result);
-	}
+	opline = get_next_op(CG(active_op_array));
+	opline->opcode = ZEND_CONCAT;
+	SET_UNUSED(opline->op1);
+	SET_NODE(opline->op2, &elem_node);
 	SET_NODE(opline->result, result);
 }
 /* }}} */
 
-/* set extended_value of each ADD_... opcode to the lenght of expected trailer */
-static void zend_backpatch_append_strings(uint32_t var_num) /* {{{ */
+static void zend_compile_check_concat_chain(uint32_t var_num) /* {{{ */
 {
 	zend_op *opline = CG(active_op_array)->opcodes + (get_next_op_number(CG(active_op_array)) - 1);
-	size_t chars_at_right = 0;
+	uint32_t chain_len = 0;
 
-	ZEND_ASSERT(opline->opcode == ZEND_ADD_STRING ||
-	            opline->opcode == ZEND_ADD_CHAR ||
-	            opline->opcode == ZEND_ADD_VAR);
+	ZEND_ASSERT(opline->opcode == ZEND_CONCAT);
 	ZEND_ASSERT(var_num == opline->result.var);
 
 	do {
-		if (opline->opcode == ZEND_ADD_CHAR &&
+		if (opline->opcode == ZEND_CONCAT &&
 		    opline->result.var == var_num) {
-			chars_at_right += 1;
-			ZEND_ASSERT(chars_at_right < 0xffffffff);
-			opline->extended_value = chars_at_right;
-			if (opline->op1_type == IS_UNUSED) {
+			if (++chain_len == 2) {
+				zend_compile_concat_rope(var_num);
+				return;
+			}
+			if (opline->op1_type != IS_UNUSED) {
 				break;
 			}
-		} else if (opline->opcode == ZEND_ADD_STRING &&
-		           opline->result.var == var_num) {
-			chars_at_right += Z_STRLEN_P(CT_CONSTANT(opline->op2));
-			ZEND_ASSERT(chars_at_right < 0xffffffff);
-			opline->extended_value = chars_at_right;
-			if (opline->op1_type == IS_UNUSED) {
-				break;
-			}
-		} else if (opline->opcode == ZEND_ADD_VAR &&
-		           opline->result.var == var_num) {
-			opline->extended_value = chars_at_right;
-			/* preallocate space for charaacters till the end of the string
-			 * not to the next VAR. This leads to less reallocations.
-			 */
-			/*chars_at_right = 0;*/
-			if (opline->op1_type == IS_UNUSED) {
-				break;
-			}
-		}
+		} 
 	} while (opline-- != CG(active_op_array)->opcodes);
+}
+/* }}} */
+
+static void zend_compile_concat_chain(znode *result, zend_ast *ast);
+
+static void zend_compile_concat_expr(znode *result, zend_ast *left_ast, zend_ast *right_ast, int is_list) /* {{{ */
+{
+	zend_op *opline;
+	znode left_node;
+	znode right_node;
+
+	zend_compile_expr(&left_node, left_ast);
+	zend_compile_expr(&right_node, right_ast);
+
+	if (left_node.op_type == IS_CONST &&
+		right_node.op_type == IS_CONST) {
+		zval zv;
+		zend_ct_eval_binary_op(&zv, ZEND_CONCAT, &left_node.u.constant, &right_node.u.constant);
+		zval_ptr_dtor(&left_node.u.constant);
+		zval_ptr_dtor(&right_node.u.constant);
+		if (is_list) {
+			zend_op *opline = zend_emit_op_tmp(NULL, ZEND_CONCAT, NULL, NULL);
+			opline->op2_type = IS_CONST;
+			opline->op2.constant = zend_add_literal(CG(active_op_array), &zv);
+			ZVAL_EMPTY_STRING(&zv);
+			opline->op1_type = IS_CONST;
+			opline->op1.constant = zend_add_literal(CG(active_op_array), &zv);
+			SET_NODE(opline->result, result);
+			return;
+		}
+		result->op_type = IS_CONST;
+		ZVAL_COPY_VALUE(&result->u.constant, &zv);
+		return;
+	} else if (left_node.op_type == IS_CONST) {
+		convert_to_string(&left_node.u.constant);
+	} else if (right_node.op_type == IS_CONST) {
+		convert_to_string(&right_node.u.constant);
+	}
+
+	if (is_list) {
+		opline = zend_emit_op(NULL, ZEND_CONCAT, &left_node, &right_node);
+		SET_NODE(opline->result, result);
+	} else {
+		zend_emit_op_tmp(result, ZEND_CONCAT, &left_node, &right_node);
+	}
+}
+/* }}} */
+
+static void zend_compile_concat(znode *result, zend_ast *ast) /* {{{ */
+{
+	zend_ast *left_ast = ast->child[0];
+
+	if (left_ast->kind == ZEND_AST_CONCAT) {
+		uint32_t var_num = get_temporary_variable(CG(active_op_array));
+
+		result->op_type = IS_TMP_VAR;
+		result->u.op.var = var_num;
+		zend_compile_concat_chain(result, ast);
+		zend_compile_check_concat_chain(var_num);
+		return;
+	}
+
+	zend_compile_concat_expr(result, left_ast, ast->child[1], 0);
 }
 /* }}} */
 
@@ -5477,13 +5525,11 @@ static void zend_compile_concat_chain(znode *result, zend_ast *ast) /* {{{ */
 {
 	zend_ast *left_ast = ast->child[0];
 
-	if (left_ast->kind == ZEND_AST_BINARY_OP &&
-	    left_ast->attr == ZEND_CONCAT) {
+	if (left_ast->kind == ZEND_AST_CONCAT) {
 		zend_compile_concat_chain(result, left_ast);
-		zend_compile_append_string(result, ast->child[1], 0);
+		zend_compile_concat_append(result, ast->child[1]);
 	} else {
-		zend_compile_append_string(result, left_ast, 1);
-		zend_compile_append_string(result, ast->child[1], 0);
+		zend_compile_concat_expr(result, left_ast, ast->child[1], 1);
 	}		
 }
 /* }}} */
@@ -5494,18 +5540,6 @@ void zend_compile_binary_op(znode *result, zend_ast *ast) /* {{{ */
 	zend_ast *right_ast = ast->child[1];
 	uint32_t opcode = ast->attr;
 	znode left_node, right_node;
-
-	if (opcode == ZEND_CONCAT &&
-	    left_ast->kind == ZEND_AST_BINARY_OP &&
-	    left_ast->attr == ZEND_CONCAT) {
-		uint32_t var_num = get_temporary_variable(CG(active_op_array));
-
-		result->op_type = IS_TMP_VAR;
-		result->u.op.var = var_num;
-		zend_compile_concat_chain(result, ast);
-		zend_backpatch_append_strings(var_num);
-		return;
-	}
 
 	zend_compile_expr(&left_node, left_ast);
 	zend_compile_expr(&right_node, right_ast);
@@ -6237,18 +6271,36 @@ void zend_compile_resolve_class_name(znode *result, zend_ast *ast) /* {{{ */
 void zend_compile_encaps_list(znode *result, zend_ast *ast) /* {{{ */
 {
 	zend_ast_list *list = zend_ast_get_list(ast);
-	uint32_t i, var_num;
 
 	ZEND_ASSERT(list->children > 0);
 
-	var_num = get_temporary_variable(CG(active_op_array));
-	result->op_type = IS_TMP_VAR;
-	result->u.op.var = var_num;
+	if (list->children == 1) {
+		znode elem_node;
+		zend_compile_expr(&elem_node, list->child[0]);
+		if (elem_node.op_type == IS_CONST) {
+			convert_to_string(&elem_node.u.constant);
+			result->op_type = IS_CONST;
+			ZVAL_STR_COPY(&result->u.constant, Z_STR(elem_node.u.constant));
+			zval_dtor(&elem_node.u.constant);
+		} else {
+			zend_op *opline = zend_emit_op_tmp(result, ZEND_CAST, &elem_node, NULL);
+			opline->extended_value = IS_STRING;
+		}
+	} else if (list->children == 2) {
+		zend_compile_concat_expr(result, list->child[0], list->child[1], 0);
+	} else {
+		uint32_t i;
+		uint32_t var_num = get_temporary_variable(CG(active_op_array));
 
-	for (i = 0; i < list->children; ++i) {
-		zend_compile_append_string(result, list->child[i], i == 0);
+		result->op_type = IS_TMP_VAR;
+		result->u.op.var = var_num;
+		zend_compile_concat_expr(result, list->child[0], list->child[1], 1);
+
+		for (i = 2; i < list->children; ++i) {
+			zend_compile_concat_append(result, list->child[i]);
+		}
+		zend_compile_check_concat_chain(var_num);
 	}
-	zend_backpatch_append_strings(var_num);
 }
 /* }}} */
 
@@ -6272,7 +6324,7 @@ zend_bool zend_is_allowed_in_const_expr(zend_ast_kind kind) /* {{{ */
 	return kind == ZEND_AST_ZVAL || kind == ZEND_AST_BINARY_OP
 		|| kind == ZEND_AST_GREATER || kind == ZEND_AST_GREATER_EQUAL
 		|| kind == ZEND_AST_AND || kind == ZEND_AST_OR
-		|| kind == ZEND_AST_UNARY_OP
+		|| kind == ZEND_AST_UNARY_OP || kind == ZEND_AST_CONCAT
 		|| kind == ZEND_AST_UNARY_PLUS || kind == ZEND_AST_UNARY_MINUS
 		|| kind == ZEND_AST_CONDITIONAL || kind == ZEND_AST_DIM
 		|| kind == ZEND_AST_ARRAY || kind == ZEND_AST_ARRAY_ELEM
@@ -6707,6 +6759,9 @@ void zend_compile_expr(znode *result, zend_ast *ast) /* {{{ */
 			return;
 		case ZEND_AST_CLOSURE:
 			zend_compile_func_decl(result, ast);
+			return;
+		case ZEND_AST_CONCAT:
+			zend_compile_concat(result, ast);
 			return;
 		default:
 			ZEND_ASSERT(0 /* not supported */);

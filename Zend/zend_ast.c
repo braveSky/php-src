@@ -223,6 +223,15 @@ ZEND_API void zend_ast_evaluate(zval *result, zend_ast *ast, zend_class_entry *s
 			zval_dtor(&op2);
 			break;
 		}
+		case ZEND_AST_CONCAT:
+		{
+			zend_ast_evaluate(&op1, ast->child[0], scope);
+			zend_ast_evaluate(&op2, ast->child[1], scope);
+			concat_function(result, &op1, &op2);
+			zval_dtor(&op1);
+			zval_dtor(&op2);
+			break;
+		}
 		case ZEND_AST_GREATER:
 		case ZEND_AST_GREATER_EQUAL:
 		{
@@ -1239,7 +1248,6 @@ simple_list:
 				case ZEND_MOD:                 BINARY_OP(" % ",   210, 210, 211);
 				case ZEND_SL:                  BINARY_OP(" << ",  190, 190, 191);
 				case ZEND_SR:                  BINARY_OP(" >> ",  190, 190, 191);
-				case ZEND_CONCAT:              BINARY_OP(" . ",   200, 200, 201);
 				case ZEND_BW_OR:               BINARY_OP(" | ",   140, 140, 141);
 				case ZEND_BW_AND:              BINARY_OP(" & ",   160, 160, 161);
 				case ZEND_BW_XOR:              BINARY_OP(" ^ ",   150, 150, 151);
@@ -1255,6 +1263,7 @@ simple_list:
 				EMPTY_SWITCH_DEFAULT_CASE();
 			}
 			break;
+		case ZEND_AST_CONCAT:                  BINARY_OP(" . ",   200, 200, 201);
 		case ZEND_AST_GREATER:                 BINARY_OP(" > ",   180, 181, 181);
 		case ZEND_AST_GREATER_EQUAL:           BINARY_OP(" >= ",  180, 181, 181);
 		case ZEND_AST_AND:                     BINARY_OP(" && ",  130, 130, 131);
