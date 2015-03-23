@@ -855,9 +855,9 @@ expr_without_variable:
 	|	expr '%' expr 	{ $$ = zend_ast_create_binary_op(ZEND_MOD, $1, $3); }
 	| 	expr T_SL expr	{ $$ = zend_ast_create_binary_op(ZEND_SL, $1, $3); }
 	|	expr T_SR expr	{ $$ = zend_ast_create_binary_op(ZEND_SR, $1, $3); }
-	|	expr '.' expr 
-			{ if ($$->kind == ZEND_AST_CONCAT_LIST) { $$ = zend_ast_list_add($1, $3); }
-				else { $$ = zend_ast_create_list(2, ZEND_AST_CONCAT_LIST, $1, $3); } }
+	|	expr '.' expr 	{ $$ = ($$->kind == ZEND_AST_CONCAT_LIST)?
+							zend_ast_list_add($1, $3):
+							zend_ast_list_add(zend_ast_create_concat_list(ZEND_CONCAT, $1), $3); }
 	|	'+' expr %prec T_INC { $$ = zend_ast_create(ZEND_AST_UNARY_PLUS, $2); }
 	|	'-' expr %prec T_INC { $$ = zend_ast_create(ZEND_AST_UNARY_MINUS, $2); }
 	|	'!' expr { $$ = zend_ast_create_ex(ZEND_AST_UNARY_OP, ZEND_BOOL_NOT, $2); }
@@ -1153,9 +1153,9 @@ encaps_list:
 	|	encaps_list T_ENCAPSED_AND_WHITESPACE
 			{ $$ = zend_ast_list_add($1, $2); }
 	|	encaps_var
-			{ $$ = zend_ast_create_list(1, ZEND_AST_CONCAT_LIST, $1); }
+			{ $$ = zend_ast_create_concat_list(0, $1); }
 	|	T_ENCAPSED_AND_WHITESPACE encaps_var
-			{ $$ = zend_ast_create_list(2, ZEND_AST_CONCAT_LIST, $1, $2); }
+			{ $$ = zend_ast_list_add(zend_ast_create_concat_list(0, $1), $2); }
 ;
 
 encaps_var:

@@ -7434,8 +7434,6 @@ ZEND_VM_HANDLER(171, ZEND_ROPE_INIT, CONST|TMPVAR|CV|UNUSED, CONST|CV|TMPVAR)
 			zval  var_copy;
 			zval *var = GET_OP1_ZVAL_PTR(BP_VAR_R);
 
-			SAVE_OPLINE();
-
 			if (Z_TYPE_P(var) != IS_STRING) {
 				if (zend_make_printable_zval(var, &var_copy)) {
 					var = &var_copy;
@@ -7470,6 +7468,8 @@ ZEND_VM_HANDLER(171, ZEND_ROPE_INIT, CONST|TMPVAR|CV|UNUSED, CONST|CV|TMPVAR)
 
 		zend_hash_next_index_insert_new(Z_ARRVAL_P(rope), var);
 	}
+	
+	SAVE_OPLINE();
 
 	CHECK_EXCEPTION();
 	ZEND_VM_NEXT_OPCODE();
@@ -7532,7 +7532,6 @@ ZEND_VM_HANDLER(174, ZEND_ROPE_END, UNUSED, CONST|TMPVAR|CV)
 	} else {
 		zend_free_op free_op2;
 		var = GET_OP2_ZVAL_PTR(BP_VAR_R);
-		SAVE_OPLINE();
 
 		last = zval_get_string(var);
 
@@ -7556,6 +7555,8 @@ ZEND_VM_HANDLER(174, ZEND_ROPE_END, UNUSED, CONST|TMPVAR|CV)
 
 	zval_dtor(rope);
 	ZVAL_NEW_STR(rope, ret);
+
+	SAVE_OPLINE();
 
 	CHECK_EXCEPTION();
 	ZEND_VM_NEXT_OPCODE();

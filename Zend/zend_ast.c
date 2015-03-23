@@ -668,13 +668,22 @@ static void zend_ast_export_concat_list(smart_str *str, char quote, zend_ast_lis
 	uint32_t i = 0;
 	zend_ast *ast;
 
+	if (list->attr != ZEND_CONCAT) {
+		smart_str_appendc(str, quote);
+	}
 	while (i < list->children) {
 		ast = list->child[i];
 		if (ast->kind == ZEND_AST_ZVAL) {
 			zval *zv = zend_ast_get_zval(ast);
 
 			ZEND_ASSERT(Z_TYPE_P(zv) == IS_STRING);
+			if (list->attr == ZEND_CONCAT) {
+				smart_str_appendc(str, '\'');
+			}
 			zend_ast_export_qstr(str, quote, Z_STR_P(zv));
+			if (list->attr == ZEND_CONCAT) {
+				smart_str_appendc(str, '\'');
+			}
 		} else if (ast->kind == ZEND_AST_VAR &&
 		           ast->child[0]->kind == ZEND_AST_ZVAL &&
 		           (i + 1 == list->children ||
@@ -684,11 +693,21 @@ static void zend_ast_export_concat_list(smart_str *str, char quote, zend_ast_lis
 		                    zend_ast_get_zval(list->child[i + 1]))))) {
 			zend_ast_export_ex(str, ast, 0, indent);
 		} else {
-			smart_str_appendc(str, '{');
+			if (list->attr != ZEND_CONCAT) {
+				smart_str_appendc(str, '{');
+			}
 			zend_ast_export_ex(str, ast, 0, indent);
-			smart_str_appendc(str, '}');
+			if (list->attr != ZEND_CONCAT) {
+				smart_str_appendc(str, '}');
+			}
 		}
-		i++;
+		if (++i < list->children && list->attr == ZEND_CONCAT) {
+			smart_str_appends(str, " . ");
+		}
+	}
+
+	if (list->attr != ZEND_CONCAT) {
+		smart_str_appendc(str, quote);
 	}
 }
 
@@ -1014,9 +1033,7 @@ simple_list:
 			smart_str_appendc(str, ']');
 			break;
 		case ZEND_AST_CONCAT_LIST:
-			smart_str_appendc(str, '"');
 			zend_ast_export_concat_list(str, '"', (zend_ast_list*)ast, indent);
-			smart_str_appendc(str, '"');
 			break;
 		case ZEND_AST_STMT_LIST:
 		case ZEND_AST_TRAIT_ADAPTATIONS:
@@ -1120,13 +1137,13 @@ simple_list:
 		case ZEND_AST_SILENCE:
 			PREFIX_OP("@", 240, 241);
 		case ZEND_AST_SHELL_EXEC:
-			smart_str_appendc(str, '`');
 			if (ast->child[0]->kind == ZEND_AST_CONCAT_LIST) {
 				zend_ast_export_concat_list(str, '`', (zend_ast_list*)ast->child[0], indent);
 			} else {
+				smart_str_appendc(str, '`');
 				zend_ast_export_ex(str, ast->child[0], 0, indent);
+				smart_str_appendc(str, '`');
 			}
-			smart_str_appendc(str, '`');
 			break;
 		case ZEND_AST_CLONE:
 			PREFIX_OP("clone ", 270, 271);
