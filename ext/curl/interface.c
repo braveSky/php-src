@@ -857,6 +857,9 @@ PHP_MINIT_FUNCTION(curl)
 	/* Curl Http Version constants (CURLOPT_HTTP_VERSION) */
 	REGISTER_CURL_CONSTANT(CURL_HTTP_VERSION_1_0);
 	REGISTER_CURL_CONSTANT(CURL_HTTP_VERSION_1_1);
+#if LIBCURL_VERSION_NUM >= 0x072100 /* 7.33.0 */
+	REGISTER_CURL_CONSTANT(CURL_HTTP_VERSION_2_0);
+#endif
 	REGISTER_CURL_CONSTANT(CURL_HTTP_VERSION_NONE);
 
 	/* Curl Lock constants */
@@ -886,6 +889,9 @@ PHP_MINIT_FUNCTION(curl)
 	REGISTER_CURL_CONSTANT(CURL_VERSION_KERBEROS4);
 	REGISTER_CURL_CONSTANT(CURL_VERSION_LIBZ);
 	REGISTER_CURL_CONSTANT(CURL_VERSION_SSL);
+#if LIBCURL_VERSION_NUM >= 0x072100 /* 7.33.0 */
+	REGISTER_CURL_CONSTANT(CURL_VERSION_HTTP2);
+#endif
 
 #if LIBCURL_VERSION_NUM >= 0x070a06 /* Available since 7.10.6 */
 	REGISTER_CURL_CONSTANT(CURLOPT_HTTPAUTH);
@@ -2499,6 +2505,7 @@ static int _php_curl_setopt(php_curl *ch, zend_long option, zval *zvalue) /* {{{
 				zend_ulong  num_key;
 				struct HttpPost *first = NULL;
 				struct HttpPost *last  = NULL;
+				CURLFORMcode form_error;
 
 				postfields = HASH_OF(zvalue);
 				if (!postfields) {
@@ -2539,13 +2546,17 @@ static int _php_curl_setopt(php_curl *ch, zend_long option, zval *zvalue) /* {{{
 							if (Z_TYPE_P(prop) == IS_STRING && Z_STRLEN_P(prop) > 0) {
 								filename = Z_STRVAL_P(prop);
 							}
-							error = curl_formadd(&first, &last,
+							form_error = curl_formadd(&first, &last,
 											CURLFORM_COPYNAME, string_key->val,
 											CURLFORM_NAMELENGTH, string_key->len,
 											CURLFORM_FILENAME, filename ? filename : postval,
 											CURLFORM_CONTENTTYPE, type ? type : "application/octet-stream",
 											CURLFORM_FILE, postval,
 											CURLFORM_END);
+							if (form_error != CURL_FORMADD_OK) {
+								/* Not nice to convert between enums but we only have place for one error type */
+								error = (CURLcode)form_error;
+							}
 						}
 
 						zend_string_release(string_key);
@@ -2560,13 +2571,17 @@ static int _php_curl_setopt(php_curl *ch, zend_long option, zval *zvalue) /* {{{
 					/* The arguments after _NAMELENGTH and _CONTENTSLENGTH
 					 * must be explicitly cast to long in curl_formadd
 					 * use since curl needs a long not an int. */
-					error = curl_formadd(&first, &last,
+					form_error = curl_formadd(&first, &last,
 										 CURLFORM_COPYNAME, string_key->val,
 										 CURLFORM_NAMELENGTH, (zend_long)string_key->len,
 										 CURLFORM_COPYCONTENTS, postval,
 										 CURLFORM_CONTENTSLENGTH, (zend_long)Z_STRLEN_P(current),
 										 CURLFORM_END);
 
+					if (form_error != CURL_FORMADD_OK) {
+						/* Not nice to convert between enums but we only have place for one error type */
+						error = (CURLcode)form_error;
+					}
 					zend_string_release(string_key);
 				} ZEND_HASH_FOREACH_END();
 

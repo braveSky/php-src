@@ -485,10 +485,13 @@ Other
 - GMP
   . Added gmp_random_seed().
 
+- PCRE:
+  . Added preg_replace_callback_array function
+    (RFC: https://wiki.php.net/rfc/preg_replace_callback_array)
+
 - Standard
   . Added intdiv() function for integer division.
   . Added error_clear_last() function to reset error state.
-
 
 ========================================
 7. New Classes and Interfaces
@@ -545,6 +548,12 @@ For more details see https://wiki.php.net/rfc/removal_of_dead_sapis_and_exts
 - Core
   . Support for native 64 bit integers in 64 bit builds.
   . Support for large files in 64 bit builds.
+
+- ftp
+  . The ftp extension is always shipped shared
+  . For SSL support, the dependency on the openssl extension was abolished. Instead
+    it depends alone on the openssl library. If it's presend at the compile time,
+    ftp_ssl_connect() is enabled automatically.
 
 ========================================
 13. Other Changes
