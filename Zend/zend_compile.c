@@ -5506,8 +5506,8 @@ static void zend_compile_concat_list(znode *result, zend_ast *ast) /* {{{ */
 				list_len += zend_compile_concat_append(result, list->child[i]);
 			}
 			
-			if (list_len != 2) {
-				/* there are more ZEND_CONCATs */
+			if (list_len > 4) {
+				/* there are enough ZEND_CONCATs for roping */
 				zend_compile_check_concat_chain(op_start, list_len);
 			}
 		}
