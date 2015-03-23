@@ -282,7 +282,7 @@ ZEND_VM_HANDLER(8, ZEND_CONCAT, CONST|TMPVAR|CV|UNUSED, CONST|TMPVAR|CV)
 	} else {
 		zend_free_op free_op1;
 		concat_function(EX_VAR(opline->result.var),
-				GET_OP1_ZVAL_PTR(BP_VAR_R),
+				OP1_TYPE == IS_UNUSED? EX_VAR(opline->result.var) : GET_OP1_ZVAL_PTR(BP_VAR_R),
 				GET_OP2_ZVAL_PTR(BP_VAR_R));
 		FREE_OP1();
 	}
@@ -7423,7 +7423,7 @@ ZEND_VM_HANDLER(171, ZEND_ROPE_INIT, CONST|TMPVAR|CV|UNUSED, CONST|CV|TMPVAR)
 	USE_OPLINE
 	zval *rope = EX_VAR(opline->result.var);
 
-	array_init(rope);
+	array_init_size(rope, opline->extended_value);
 
 	if (OP1_TYPE != IS_UNUSED) {
 		if (OP1_TYPE == IS_CONST) {
@@ -7512,7 +7512,7 @@ ZEND_VM_HANDLER(173, ZEND_ROPE_ADD_VAR, UNUSED, TMPVAR|CV)
 	ZEND_VM_NEXT_OPCODE();
 }
 
-ZEND_VM_HANDLER(174, ZEND_ROPE_END, ANY, CONST|TMPVAR|CV)
+ZEND_VM_HANDLER(174, ZEND_ROPE_END, UNUSED, CONST|TMPVAR|CV)
 {
 	USE_OPLINE
 	zval *var;

@@ -316,9 +316,10 @@ check_numeric:
 		        	}
 				}
 				break;
-			default:
 			case ZEND_ROPE_ADD_VAR:
 				opline->opcode = ZEND_ROPE_ADD_STRING;
+				break;
+			default:
 				break;
 		}
 	}

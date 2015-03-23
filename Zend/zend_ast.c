@@ -223,13 +223,17 @@ ZEND_API void zend_ast_evaluate(zval *result, zend_ast *ast, zend_class_entry *s
 			zval_dtor(&op2);
 			break;
 		}
-		case ZEND_AST_CONCAT:
+		case ZEND_AST_CONCAT_LIST:
 		{
-			zend_ast_evaluate(&op1, ast->child[0], scope);
-			zend_ast_evaluate(&op2, ast->child[1], scope);
-			concat_function(result, &op1, &op2);
-			zval_dtor(&op1);
-			zval_dtor(&op2);
+			uint32_t i;
+			zend_ast_list *list = zend_ast_get_list(ast);
+
+			ZVAL_EMPTY_STRING(result);
+			for (i = 0; i < list->children; ++i) {
+				zend_ast_evaluate(&op1, list->child[i], scope);
+				concat_function(result, result, &op1);
+				zval_dtor(&op1);
+			}
 			break;
 		}
 		case ZEND_AST_GREATER:
@@ -659,7 +663,7 @@ static void zend_ast_export_list(smart_str *str, zend_ast_list *list, int separa
 	}
 }
 
-static void zend_ast_export_encaps_list(smart_str *str, char quote, zend_ast_list *list, int indent)
+static void zend_ast_export_concat_list(smart_str *str, char quote, zend_ast_list *list, int indent)
 {
 	uint32_t i = 0;
 	zend_ast *ast;
@@ -1009,9 +1013,9 @@ simple_list:
 			zend_ast_export_list(str, (zend_ast_list*)ast, 1, 20, indent);
 			smart_str_appendc(str, ']');
 			break;
-		case ZEND_AST_ENCAPS_LIST:
+		case ZEND_AST_CONCAT_LIST:
 			smart_str_appendc(str, '"');
-			zend_ast_export_encaps_list(str, '"', (zend_ast_list*)ast, indent);
+			zend_ast_export_concat_list(str, '"', (zend_ast_list*)ast, indent);
 			smart_str_appendc(str, '"');
 			break;
 		case ZEND_AST_STMT_LIST:
@@ -1117,8 +1121,8 @@ simple_list:
 			PREFIX_OP("@", 240, 241);
 		case ZEND_AST_SHELL_EXEC:
 			smart_str_appendc(str, '`');
-			if (ast->child[0]->kind == ZEND_AST_ENCAPS_LIST) {
-				zend_ast_export_encaps_list(str, '`', (zend_ast_list*)ast->child[0], indent);
+			if (ast->child[0]->kind == ZEND_AST_CONCAT_LIST) {
+				zend_ast_export_concat_list(str, '`', (zend_ast_list*)ast->child[0], indent);
 			} else {
 				zend_ast_export_ex(str, ast->child[0], 0, indent);
 			}
@@ -1263,7 +1267,6 @@ simple_list:
 				EMPTY_SWITCH_DEFAULT_CASE();
 			}
 			break;
-		case ZEND_AST_CONCAT:                  BINARY_OP(" . ",   200, 200, 201);
 		case ZEND_AST_GREATER:                 BINARY_OP(" > ",   180, 181, 181);
 		case ZEND_AST_GREATER_EQUAL:           BINARY_OP(" >= ",  180, 181, 181);
 		case ZEND_AST_AND:                     BINARY_OP(" && ",  130, 130, 131);
