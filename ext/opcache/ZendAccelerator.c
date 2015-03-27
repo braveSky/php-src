@@ -1165,6 +1165,9 @@ static zend_persistent_script *cache_script_in_shared_memory(zend_persistent_scr
 		}
 	}
 
+
+	zend_shared_alloc_init_xlat_table();
+
 	/* Calculate the required memory size */
 	memory_used = zend_accel_script_persist_calc(new_persistent_script, key, key_length);
 
@@ -1177,6 +1180,7 @@ static zend_persistent_script *cache_script_in_shared_memory(zend_persistent_scr
 	ZCG(mem) = zend_shared_alloc(memory_used);
 #endif
 	if (!ZCG(mem)) {
+		zend_shared_alloc_destroy_xlat_table();
 		zend_accel_schedule_restart_if_necessary(ACCEL_RESTART_OOM);
 		zend_shared_alloc_unlock();
 		return new_persistent_script;
@@ -1184,6 +1188,8 @@ static zend_persistent_script *cache_script_in_shared_memory(zend_persistent_scr
 
 	/* Copy into shared memory */
 	new_persistent_script = zend_accel_script_persist(new_persistent_script, &key, key_length);
+
+	zend_shared_alloc_destroy_xlat_table();
 
 	new_persistent_script->is_phar =
 		new_persistent_script->full_path &&

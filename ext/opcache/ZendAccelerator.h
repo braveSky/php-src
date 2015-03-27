@@ -239,6 +239,7 @@ typedef struct _zend_accel_globals {
 	int                     auto_globals_mask;
 	time_t                  request_time;
 	char                    system_id[32];
+	HashTable               xlat_table;
 	/* preallocated shared-memory block to save current script */
 	void                   *mem;
 	void                   *arena_mem;
