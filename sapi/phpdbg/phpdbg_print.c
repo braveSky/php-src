@@ -63,32 +63,36 @@ static inline void phpdbg_print_function_helper(zend_function *method) /* {{{ */
 				end = op_array->last-1;
 
 				if (method->common.scope) {
-					phpdbg_writeln("printoplineinfo", "type=\"User\" startline=\"%d\" endline=\"%d\" method=\"%s::%s\" file=\"%s\"", "\tL%d-%d %s::%s() %s",
+					phpdbg_writeln("printoplineinfo", "type=\"User\" startline=\"%d\" endline=\"%d\" method=\"%s::%s\" file=\"%s\" opline=\"%p\"", "L%d-%d %s::%s() %s - %p + %d ops",
 						op_array->line_start,
 						op_array->line_end,
 						method->common.scope->name->val,
 						method->common.function_name->val,
-						op_array->filename ? op_array->filename->val : "unknown");
+						op_array->filename ? op_array->filename->val : "unknown",
+						opline,
+						op_array->last);
 				} else {
-					phpdbg_writeln("printoplineinfo", "type=\"User\" startline=\"%d\" endline=\"%d\" function=\"%s\" file=\"%s\"", "\tL%d-%d %s() %s",
+					phpdbg_writeln("printoplineinfo", "type=\"User\" startline=\"%d\" endline=\"%d\" function=\"%s\" file=\"%s\" opline=\"%p\"", "L%d-%d %s() %s - %p + %d ops",
 						method->common.function_name ? op_array->line_start : 0,
 						method->common.function_name ? op_array->line_end : 0,
 						method->common.function_name ? method->common.function_name->val : "{main}",
-						op_array->filename ? op_array->filename->val : "unknown");
+						op_array->filename ? op_array->filename->val : "unknown",
+						opline,
+						op_array->last);
 				}
 
 				zend_hash_init(&vars, op_array->last, NULL, NULL, 0);
 				do {
 					char *decode = phpdbg_decode_opline(op_array, opline, &vars);
 					if (decode != NULL) {
-						phpdbg_writeln("print", "line=\"%u\" opline=\"%p\" opcode=\"%s\" op=\"%s\"", "\t\tL%u\t%p %-30s %s",
+						phpdbg_writeln("print", "line=\"%u\" opnum=\"%u\" opcode=\"%s\" op=\"%s\"", " L%-5u #%-5u %-36s %s",
 							opline->lineno,
-							opline,
+							opcode,
 							phpdbg_decode_opcode(opline->opcode),
 							decode);
 						free(decode);
 					} else {
-						phpdbg_error("print", "type=\"decodefailure\" opline=\"%16p\"", "\tFailed to decode opline %16p", opline);
+						phpdbg_error("print", "type=\"decodefailure\" opline=\"%16p\"", "Failed to decode opline %16p", opline);
 					}
 					opline++;
 				} while (opcode++ < end);

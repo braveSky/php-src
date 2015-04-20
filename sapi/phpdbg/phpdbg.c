@@ -1192,7 +1192,7 @@ phpdbg_main:
 				if (sscanf(php_optarg, "%d", &listen) != 1) {
 					listen = 8000;
 				}
-				break;
+			break;
 
 			case 'a': { /* set bind address */
 				free(address);
