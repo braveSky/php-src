@@ -103,17 +103,12 @@ PHP_METHOD(sqlite3, open)
 	char *filename, *encryption_key, *fullpath;
 	size_t filename_len, encryption_key_len = 0;
 	zend_long flags = SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE;
-	zend_error_handling error_handling;
 
 	db_obj = Z_SQLITE3_DB_P(object);
-	zend_replace_error_handling(EH_THROW, NULL, &error_handling);
 
-	if (FAILURE == zend_parse_parameters(ZEND_NUM_ARGS(), "p|ls", &filename, &filename_len, &flags, &encryption_key, &encryption_key_len)) {
-		zend_restore_error_handling(&error_handling);
+	if (FAILURE == zend_parse_parameters_throw(ZEND_NUM_ARGS(), "p|ls", &filename, &filename_len, &flags, &encryption_key, &encryption_key_len)) {
 		return;
 	}
-
-	zend_restore_error_handling(&error_handling);
 
 	if (db_obj->initialised) {
 		zend_throw_exception(zend_exception_get_default(), "Already initialised DB Object", 0);
@@ -845,7 +840,7 @@ static int php_sqlite3_callback_compare(void *coll, int a_len, const void *a, in
 	zval retval;
 	int ret;
 
-
+	ZVAL_UNDEF(&retval);
 	collation->fci.fci.size = (sizeof(collation->fci.fci));
 	collation->fci.fci.function_table = EG(function_table);
 	ZVAL_COPY_VALUE(&collation->fci.fci.function_name, &collation->cmp_func);
@@ -1252,6 +1247,7 @@ PHP_METHOD(sqlite3stmt, paramCount)
 		return;
 	}
 
+	SQLITE3_CHECK_INITIALIZED(stmt_obj->db_obj, stmt_obj->initialised, SQLite3);
 	SQLITE3_CHECK_INITIALIZED_STMT(stmt_obj->stmt, SQLite3Stmt);
 
 	RETURN_LONG(sqlite3_bind_parameter_count(stmt_obj->stmt));
@@ -1269,6 +1265,8 @@ PHP_METHOD(sqlite3stmt, close)
 	if (zend_parse_parameters_none() == FAILURE) {
 		return;
 	}
+
+	SQLITE3_CHECK_INITIALIZED(stmt_obj->db_obj, stmt_obj->initialised, SQLite3);
 
 	if(stmt_obj->db_obj) {
         	zend_llist_del_element(&(stmt_obj->db_obj->free_list), object, (int (*)(void *, void *)) php_sqlite3_compare_stmt_zval_free);
@@ -1290,6 +1288,7 @@ PHP_METHOD(sqlite3stmt, reset)
 		return;
 	}
 
+	SQLITE3_CHECK_INITIALIZED(stmt_obj->db_obj, stmt_obj->initialised, SQLite3);
 	SQLITE3_CHECK_INITIALIZED_STMT(stmt_obj->stmt, SQLite3Stmt);
 
 	if (sqlite3_reset(stmt_obj->stmt) != SQLITE_OK) {
@@ -1312,6 +1311,7 @@ PHP_METHOD(sqlite3stmt, clear)
 		return;
 	}
 
+	SQLITE3_CHECK_INITIALIZED(stmt_obj->db_obj, stmt_obj->initialised, SQLite3);
 	SQLITE3_CHECK_INITIALIZED_STMT(stmt_obj->stmt, SQLite3Stmt);
 
 	if (sqlite3_clear_bindings(stmt_obj->stmt) != SQLITE_OK) {
@@ -1335,6 +1335,7 @@ PHP_METHOD(sqlite3stmt, readOnly)
 		return;
 	}
 
+	SQLITE3_CHECK_INITIALIZED(stmt_obj->db_obj, stmt_obj->initialised, SQLite3);
 	SQLITE3_CHECK_INITIALIZED_STMT(stmt_obj->stmt, SQLite3Stmt);
 
 #if SQLITE_VERSION_NUMBER >= 3007004
@@ -1410,6 +1411,7 @@ PHP_METHOD(sqlite3stmt, bindParam)
 		}
 	}
 
+	SQLITE3_CHECK_INITIALIZED(stmt_obj->db_obj, stmt_obj->initialised, SQLite3);
 	SQLITE3_CHECK_INITIALIZED_STMT(stmt_obj->stmt, SQLite3Stmt);
 
 	ZVAL_COPY(&param.parameter, parameter);
@@ -1444,6 +1446,7 @@ PHP_METHOD(sqlite3stmt, bindValue)
 		}
 	}
 
+	SQLITE3_CHECK_INITIALIZED(stmt_obj->db_obj, stmt_obj->initialised, SQLite3);
 	SQLITE3_CHECK_INITIALIZED_STMT(stmt_obj->stmt, SQLite3Stmt);
 
 	ZVAL_COPY(&param.parameter, parameter);
@@ -1475,7 +1478,7 @@ PHP_METHOD(sqlite3stmt, execute)
 		return;
 	}
 
-	SQLITE3_CHECK_INITIALIZED(stmt_obj->db_obj, stmt_obj->initialised, SQLite3)
+	SQLITE3_CHECK_INITIALIZED(stmt_obj->db_obj, stmt_obj->initialised, SQLite3);
 
 	if (stmt_obj->bound_params) {
 		ZEND_HASH_FOREACH_PTR(stmt_obj->bound_params, param) {
@@ -1592,17 +1595,15 @@ PHP_METHOD(sqlite3stmt, __construct)
 	php_sqlite3_free_list *free_item;
 
 	stmt_obj = Z_SQLITE3_STMT_P(object);
-	zend_replace_error_handling(EH_THROW, NULL, &error_handling);
 
-	if (zend_parse_parameters(ZEND_NUM_ARGS(), "OS", &db_zval, php_sqlite3_sc_entry, &sql) == FAILURE) {
-		zend_restore_error_handling(&error_handling);
+	if (zend_parse_parameters_throw(ZEND_NUM_ARGS(), "OS", &db_zval, php_sqlite3_sc_entry, &sql) == FAILURE) {
 		return;
 	}
 
 	db_obj = Z_SQLITE3_DB_P(db_zval);
 
+	zend_replace_error_handling(EH_THROW, NULL, &error_handling);
 	SQLITE3_CHECK_INITIALIZED(db_obj, db_obj->initialised, SQLite3)
-
 	zend_restore_error_handling(&error_handling);
 
 	if (!sql->len) {

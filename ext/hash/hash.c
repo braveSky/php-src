@@ -137,6 +137,7 @@ static void php_hash_do_hash(INTERNAL_FUNCTION_PARAMETERS, int isfilename, zend_
 	}
 	if (isfilename) {
 		if (CHECK_NULL_PATH(data, data_len)) {
+			php_error_docref(NULL TSRMLS_CC, E_WARNING, "Invalid path");
 			RETURN_FALSE;
 		}
 		stream = php_stream_open_wrapper_ex(data, "rb", REPORT_ERRORS, NULL, DEFAULT_CONTEXT);
@@ -254,6 +255,10 @@ static void php_hash_do_hash_hmac(INTERNAL_FUNCTION_PARAMETERS, int isfilename, 
 		RETURN_FALSE;
 	}
 	if (isfilename) {
+		if (CHECK_NULL_PATH(data, data_len)) {
+			php_error_docref(NULL TSRMLS_CC, E_WARNING, "Invalid path");
+			RETURN_FALSE;
+		}
 		stream = php_stream_open_wrapper_ex(data, "rb", REPORT_ERRORS, NULL, DEFAULT_CONTEXT);
 		if (!stream) {
 			/* Stream will report errors opening file */
@@ -464,7 +469,7 @@ PHP_FUNCTION(hash_update_file)
 	char *filename, buf[1024];
 	size_t filename_len, n;
 
-	if (zend_parse_parameters(ZEND_NUM_ARGS(), "rs|r", &zhash, &filename, &filename_len, &zcontext) == FAILURE) {
+	if (zend_parse_parameters(ZEND_NUM_ARGS(), "rp|r", &zhash, &filename, &filename_len, &zcontext) == FAILURE) {
 		return;
 	}
 
@@ -531,14 +536,6 @@ PHP_FUNCTION(hash_final)
 	digest->val[digest_len] = 0;
 	efree(hash->context);
 	hash->context = NULL;
-
-	//???
-	//??? /* zend_list_REAL_delete() */
-	//??? if (zend_hash_index_find(&EG(regular_list), Z_RESVAL_P(zhash), (void *) &le)==SUCCESS) {
-	//??? 	/* This is a hack to avoid letting the resource hide elsewhere (like in separated vars)
-	//??? 		FETCH_RESOURCE is intelligent enough to handle dealing with any issues this causes */
-	//??? 	le->refcount = 1;
-	//??? } /* FAILURE is not an option */
 	zend_list_close(Z_RES_P(zhash));
 
 	if (raw_output) {

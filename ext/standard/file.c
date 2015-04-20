@@ -900,11 +900,9 @@ PHPAPI PHP_FUNCTION(fclose)
 		RETURN_FALSE;
 	}
 
-	if (!stream->is_persistent) {
-		php_stream_close(stream);
-	} else {
-		php_stream_pclose(stream);
-	}
+	php_stream_free(stream,
+		PHP_STREAM_FREE_KEEP_RSRC |
+		(stream->is_persistent ? PHP_STREAM_FREE_CLOSE_PERSISTENT : PHP_STREAM_FREE_CLOSE));
 
 	RETURN_TRUE;
 }
@@ -1665,7 +1663,7 @@ PHPAPI int php_copy_file(const char *src, const char *dest)
  */
 PHPAPI int php_copy_file_ex(const char *src, const char *dest, int src_flg)
 {
-	return php_copy_file_ctx(src, dest, 0, NULL);
+	return php_copy_file_ctx(src, dest, src_flg, NULL);
 }
 /* }}} */
 

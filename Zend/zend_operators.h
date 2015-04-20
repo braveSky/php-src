@@ -416,10 +416,8 @@ ZEND_API void ZEND_FASTCALL zend_locale_sprintf_double(zval *op ZEND_FILE_LINE_D
 		convert_scalar_to_number(pzv);					\
 	}
 
-#if HAVE_SETLOCALE && defined(ZEND_WIN32) && !defined(ZTS) && defined(_MSC_VER) && (_MSC_VER >= 1400)
-/* This is performance improvement of tolower() on Windows and VC2005
- * Gives 10-18% on bench.php
- */
+#if HAVE_SETLOCALE && defined(ZEND_WIN32) && !defined(ZTS) && defined(_MSC_VER)
+/* This performance improvement of tolower() on Windows gives 10-18% on bench.php */
 #define ZEND_USE_TOLOWER_L 1
 #endif
 
@@ -777,52 +775,6 @@ static zend_always_inline void fast_long_sub_function(zval *result, zval *op1, z
 
 static zend_always_inline int fast_div_function(zval *result, zval *op1, zval *op2)
 {
-#if 0
-	if (EXPECTED(Z_TYPE_P(op1) == IS_LONG) && 0) {
-		if (EXPECTED(Z_TYPE_P(op2) == IS_LONG)) {
-			if (UNEXPECTED(Z_LVAL_P(op2) == 0)) {
-				zend_error(E_WARNING, "Division by zero");
-				ZVAL_BOOL(result, 0);
-				return FAILURE;
-			} else if (UNEXPECTED(Z_LVAL_P(op2) == -1 && Z_LVAL_P(op1) == ZEND_LONG_MIN)) {
-				/* Prevent overflow error/crash */
-				ZVAL_DOUBLE(result, (double) ZEND_LONG_MIN / -1);
-			} else if (EXPECTED(Z_LVAL_P(op1) % Z_LVAL_P(op2) == 0)) {
-				/* integer */
-				ZVAL_LONG(result, Z_LVAL_P(op1) / Z_LVAL_P(op2));
-			} else {
-				ZVAL_DOUBLE(result, ((double) Z_LVAL_P(op1)) / ((double)Z_LVAL_P(op2)));
-			}
-			return SUCCESS;
-		} else if (EXPECTED(Z_TYPE_P(op2) == IS_DOUBLE)) {
-			if (UNEXPECTED(Z_DVAL_P(op2) == 0)) {
-				zend_error(E_WARNING, "Division by zero");
-				ZVAL_BOOL(result, 0);
-				return FAILURE;
-			}
-			ZVAL_DOUBLE(result, ((double)Z_LVAL_P(op1)) / Z_DVAL_P(op2));
-			return SUCCESS;
-		}
-	} else if (EXPECTED(Z_TYPE_P(op1) == IS_DOUBLE) && 0) {
-		if (EXPECTED(Z_TYPE_P(op2) == IS_DOUBLE)) {
-			if (UNEXPECTED(Z_DVAL_P(op2) == 0)) {
-				zend_error(E_WARNING, "Division by zero");
-				ZVAL_BOOL(result, 0);
-				return FAILURE;
-			}
-			ZVAL_DOUBLE(result, Z_DVAL_P(op1) / Z_DVAL_P(op2));
-			return SUCCESS;
-		} else if (EXPECTED(Z_TYPE_P(op2) == IS_LONG)) {
-			if (UNEXPECTED(Z_LVAL_P(op2) == 0)) {
-				zend_error(E_WARNING, "Division by zero");
-				ZVAL_BOOL(result, 0);
-				return FAILURE;
-			}
-			ZVAL_DOUBLE(result, Z_DVAL_P(op1) / ((double)Z_LVAL_P(op2)));
-			return SUCCESS;
-		}
-	}
-#endif
 	return div_function(result, op1, op2);
 }
 

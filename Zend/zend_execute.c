@@ -502,24 +502,15 @@ static inline zval *_get_zval_ptr_ptr(int op_type, znode_op node, const zend_exe
 }
 
 static zend_always_inline zval *_get_obj_zval_ptr_unused(zend_execute_data *execute_data)
-{
-	if (EXPECTED(Z_OBJ(EX(This)) != NULL)) {
-		return &EX(This);
-	} else {
-		zend_error_noreturn(E_ERROR, "Using $this when not in object context");
-		return NULL;
-	}
+{	
+	return &EX(This);
 }
 
 static inline zval *_get_obj_zval_ptr(int op_type, znode_op op, zend_execute_data *execute_data, zend_free_op *should_free, int type)
 {
 	if (op_type == IS_UNUSED) {
-		if (EXPECTED(Z_OBJ(EX(This)) != NULL)) {
-			*should_free = NULL;
-			return &EX(This);
-		} else {
-			zend_error_noreturn(E_ERROR, "Using $this when not in object context");
-		}
+		*should_free = NULL;
+		return &EX(This);
 	}
 	return get_zval_ptr(op_type, op, execute_data, should_free, type);
 }
@@ -527,12 +518,8 @@ static inline zval *_get_obj_zval_ptr(int op_type, znode_op op, zend_execute_dat
 static inline zval *_get_obj_zval_ptr_ptr(int op_type, znode_op node, zend_execute_data *execute_data, zend_free_op *should_free, int type)
 {
 	if (op_type == IS_UNUSED) {
-		if (EXPECTED(Z_OBJ(EX(This)) != NULL)) {
-			*should_free = NULL;
-			return &EX(This);
-		} else {
-			zend_error_noreturn(E_ERROR, "Using $this when not in object context");
-		}
+		*should_free = NULL;
+		return &EX(This);
 	}
 	return get_zval_ptr_ptr(op_type, node, execute_data, should_free, type);
 }
@@ -642,7 +629,9 @@ static int is_null_constant(zval *default_value)
 		zval constant;
 
 		ZVAL_COPY_VALUE(&constant, default_value);
-		zval_update_constant(&constant, 0);
+		if (UNEXPECTED(zval_update_constant_ex(&constant, 0, NULL) != SUCCESS)) {
+			return 0;
+		}
 		if (Z_TYPE(constant) == IS_NULL) {
 			return 1;
 		}
@@ -880,7 +869,7 @@ ZEND_API void zend_verify_internal_return_error(const zend_function *zf, const c
 		fclass = "";
 	}
 
-	zend_error(E_CORE_ERROR, "Return value of %s%s%s() must %s%s, %s%s returned",
+	zend_error_noreturn(E_CORE_ERROR, "Return value of %s%s%s() must %s%s, %s%s returned",
 		fclass, fsep, fname, need_msg, need_kind, returned_msg, returned_kind);
 }
 
@@ -982,7 +971,7 @@ static inline int zend_verify_missing_return_type(zend_function *zf)
 static zend_always_inline void zend_assign_to_object(zval *retval, zval *object, uint32_t object_op_type, zval *property_name, uint32_t property_op_type, int value_type, znode_op value_op, const zend_execute_data *execute_data, void **cache_slot)
 {
 	zend_free_op free_value;
- 	zval *value = get_zval_ptr_deref(value_type, value_op, execute_data, &free_value, BP_VAR_R);
+	zval *value = get_zval_ptr(value_type, value_op, execute_data, &free_value, BP_VAR_R);
  	zval tmp;
 
 	if (object_op_type != IS_UNUSED && UNEXPECTED(Z_TYPE_P(object) != IS_OBJECT)) {
@@ -1041,11 +1030,8 @@ static zend_always_inline void zend_assign_to_object(zval *retval, zval *object,
 			if (Z_TYPE_P(property) != IS_UNDEF) {
 fast_assign:
 				value = zend_assign_to_variable(property, value, value_type);
-				if (retval && !EG(exception)) {
+				if (retval && EXPECTED(!EG(exception))) {
 					ZVAL_COPY(retval, value);
-				}
-				if (value_type == IS_VAR) {
-					FREE_OP(free_value);
 				}
 				return;
 			}
@@ -1058,6 +1044,8 @@ fast_assign:
 			}
 
 			if (!zobj->ce->__set) {
+				zval *ref = NULL;
+
 				if (EXPECTED(zobj->properties == NULL)) {
 					rebuild_object_properties(zobj);
 				}
@@ -1068,16 +1056,25 @@ fast_assign:
 						zval_copy_ctor_func(&tmp);
 						value = &tmp;
 					}
-				} else if (value_type != IS_TMP_VAR &&
-				           Z_REFCOUNTED_P(value)) {
-					Z_ADDREF_P(value);
+				} else if (value_type != IS_TMP_VAR) {
+					if (Z_ISREF_P(value)) {
+						if (value_type == IS_CV) {
+							ref = value;
+						}
+						value = Z_REFVAL_P(value);
+						if (Z_REFCOUNTED_P(value)) {
+							Z_ADDREF_P(value);
+						}
+					} else if (value_type == IS_CV && Z_REFCOUNTED_P(value)) {
+						Z_ADDREF_P(value);
+					}
 				}
 				zend_hash_add_new(zobj->properties, Z_STR_P(property_name), value);
-				if (retval && !EG(exception)) {
+				if (retval) {
 					ZVAL_COPY(retval, value);
 				}
-				if (value_type == IS_VAR) {
-					FREE_OP(free_value);
+				if (/*value_type == IS_VAR &&*/ ref) {
+					efree_size(ref, sizeof(zend_reference));
 				}
 				return;
 			}
@@ -1100,18 +1097,18 @@ fast_assign:
 			zval_copy_ctor_func(&tmp);
 			value = &tmp;
 		}
-	} else if (value_type != IS_TMP_VAR &&
-	           Z_REFCOUNTED_P(value)) {
-		Z_ADDREF_P(value);
+	} else if (value_type != IS_TMP_VAR) {
+		ZVAL_DEREF(value);
 	}
 
 	Z_OBJ_HT_P(object)->write_property(object, property_name, value, cache_slot);
 
-	if (retval && !EG(exception)) {
+	if (retval && EXPECTED(!EG(exception))) {
 		ZVAL_COPY(retval, value);
 	}
-	zval_ptr_dtor(value);
-	if (value_type == IS_VAR) {
+	if (value_type == IS_CONST) {
+		zval_ptr_dtor_nogc(value);
+	} else {
 		FREE_OP(free_value);
 	}
 }
@@ -1124,7 +1121,9 @@ static zend_never_inline void zend_assign_to_object_dim(zval *retval, zval *obje
 
 	/* Note:  property_name in this case is really the array index! */
 	if (!Z_OBJ_HT_P(object)->write_dimension) {
-		zend_error_noreturn(E_ERROR, "Cannot use object as array");
+		zend_error(E_EXCEPTION | E_ERROR, "Cannot use object as array");
+		FREE_OP(free_value);
+		return;
 	}
 
 	/* separate our value if necessary */
@@ -1134,18 +1133,16 @@ static zend_never_inline void zend_assign_to_object_dim(zval *retval, zval *obje
 			zval_copy_ctor_func(&tmp);
 			value = &tmp;
 		}
-	} else if (value_type != IS_TMP_VAR &&
-	           Z_REFCOUNTED_P(value)) {
-		Z_ADDREF_P(value);
 	}
 
 	Z_OBJ_HT_P(object)->write_dimension(object, property_name, value);
 
-	if (retval && !EG(exception)) {
+	if (retval && EXPECTED(!EG(exception))) {
 		ZVAL_COPY(retval, value);
 	}
-	zval_ptr_dtor(value);
-	if (value_type == IS_VAR) {
+	if (value_type == IS_CONST) {
+		zval_ptr_dtor_nogc(value);
+	} else {
 		FREE_OP(free_value);
 	}
 }
@@ -1159,11 +1156,11 @@ static zend_never_inline void zend_binary_assign_op_obj_dim(zval *object, zval *
 		(z = Z_OBJ_HT_P(object)->read_dimension(object, property, BP_VAR_R, &rv)) != NULL) {
 
 		if (Z_TYPE_P(z) == IS_OBJECT && Z_OBJ_HT_P(z)->get) {
-			zval rv;
-			zval *value = Z_OBJ_HT_P(z)->get(z, &rv);
+			zval rv2;
+			zval *value = Z_OBJ_HT_P(z)->get(z, &rv2);
 
-			if (Z_REFCOUNT_P(z) == 0) {
-				zend_objects_store_del(Z_OBJ_P(z));
+			if (z == &rv) {
+				zval_ptr_dtor(&rv);
 			}
 			ZVAL_COPY_VALUE(z, value);
 		}
@@ -1370,7 +1367,7 @@ str_index:
 				hval = zend_dval_to_lval(Z_DVAL_P(dim));
 				goto num_index;
 			case IS_RESOURCE:
-				zend_error(E_STRICT, "Resource ID#%pd used as offset, casting to integer (%pd)", Z_RES_HANDLE_P(dim), Z_RES_HANDLE_P(dim));
+				zend_error(E_NOTICE, "Resource ID#%pd used as offset, casting to integer (%pd)", Z_RES_HANDLE_P(dim), Z_RES_HANDLE_P(dim));
 				hval = Z_RES_HANDLE_P(dim);
 				goto num_index;
 			case IS_FALSE:
@@ -1394,10 +1391,6 @@ str_index:
 static zend_never_inline zend_long zend_check_string_offset(zval *dim, int type)
 {
 	zend_long offset;
-
-	if (dim == NULL) {
-		zend_error_noreturn(E_ERROR, "[] operator not supported for strings");
-	}
 
 try_again:
 	if (UNEXPECTED(Z_TYPE_P(dim) != IS_LONG)) {
@@ -1473,12 +1466,17 @@ convert_to_array:
 			goto fetch_from_array;
 		}
 
-		zend_check_string_offset(dim, type);
+		if (dim == NULL) {
+			zend_error(E_EXCEPTION | E_ERROR, "[] operator not supported for strings");
+		} else {
+			zend_check_string_offset(dim, type);
+		}
 
 		ZVAL_INDIRECT(result, NULL); /* wrong string offset */
 	} else if (EXPECTED(Z_TYPE_P(container) == IS_OBJECT)) {
 		if (!Z_OBJ_HT_P(container)->read_dimension) {
-			zend_error_noreturn(E_ERROR, "Cannot use object as array");
+			zend_error(E_EXCEPTION | E_ERROR, "Cannot use object as array");
+			retval = &EG(error_zval);
 		} else {
 			retval = Z_OBJ_HT_P(container)->read_dimension(container, dim, type, result);
 
@@ -1610,7 +1608,8 @@ try_string_offset:
 		}
 	} else if (EXPECTED(Z_TYPE_P(container) == IS_OBJECT)) {
 		if (!Z_OBJ_HT_P(container)->read_dimension) {
-			zend_error_noreturn(E_ERROR, "Cannot use object as array");
+			zend_error(E_EXCEPTION | E_ERROR, "Cannot use object as array");
+			ZVAL_NULL(result);
 		} else {
 			retval = Z_OBJ_HT_P(container)->read_dimension(container, dim, type, result);
 
@@ -1650,7 +1649,7 @@ static zend_always_inline void zend_fetch_property_address(zval *result, zval *c
 {
     if (container_op_type != IS_UNUSED && UNEXPECTED(Z_TYPE_P(container) != IS_OBJECT)) {
 		do {
-			if (container_op_type != IS_VAR && UNEXPECTED(container == &EG(error_zval))) {
+			if (container_op_type == IS_VAR && UNEXPECTED(container == &EG(error_zval))) {
 				ZVAL_INDIRECT(result, &EG(error_zval));
 				return;
 			}
@@ -1704,7 +1703,8 @@ static zend_always_inline void zend_fetch_property_address(zval *result, zval *c
 					ZVAL_INDIRECT(result, ptr);
 				}
 			} else {
-				zend_error_noreturn(E_ERROR, "Cannot access undefined property for object with overloaded property access");
+				zend_error(E_EXCEPTION | E_ERROR, "Cannot access undefined property for object with overloaded property access");
+				ZVAL_INDIRECT(result, &EG(error_zval));
 			}
 		} else {
 			ZVAL_INDIRECT(result, ptr);
@@ -1722,13 +1722,10 @@ static zend_always_inline void zend_fetch_property_address(zval *result, zval *c
 
 static inline zend_brk_cont_element* zend_brk_cont(int nest_levels, int array_offset, const zend_op_array *op_array, const zend_execute_data *execute_data)
 {
-	int original_nest_levels = nest_levels;
 	zend_brk_cont_element *jmp_to;
 
 	do {
-		if (array_offset==-1) {
-			zend_error_noreturn(E_ERROR, "Cannot break/continue %d level%s", original_nest_levels, (original_nest_levels == 1) ? "" : "s");
-		}
+		ZEND_ASSERT(array_offset != -1);
 		jmp_to = &op_array->brk_cont_array[array_offset];
 		if (nest_levels>1) {
 			zend_op *brk_opline = &op_array->opcodes[jmp_to->brk];
@@ -1806,14 +1803,20 @@ ZEND_API void zend_clean_and_cache_symbol_table(zend_array *symbol_table) /* {{{
 
 static zend_always_inline void i_free_compiled_variables(zend_execute_data *execute_data) /* {{{ */
 {
-	if (EXPECTED(EX(func)->op_array.last_var > 0)) {
-		zval *cv = EX_VAR_NUM(0);
-		zval *end = cv + EX(func)->op_array.last_var;
-		do {
-			zval_ptr_dtor(cv);
-			cv++;
-	 	} while (cv != end);
-	}
+	zval *cv = EX_VAR_NUM(0);
+	zval *end = cv + EX(func)->op_array.last_var;
+	while (EXPECTED(cv != end)) {
+		if (Z_REFCOUNTED_P(cv)) {
+			if (!Z_DELREF_P(cv)) {
+				zend_refcounted *r = Z_COUNTED_P(cv);
+				ZVAL_NULL(cv);
+				zval_dtor_func_for_ptr(r);
+			} else {
+				GC_ZVAL_CHECK_POSSIBLE_ROOT(cv);
+			}
+		}
+		cv++;
+ 	}
 }
 /* }}} */
 
@@ -2060,12 +2063,12 @@ ZEND_API zend_execute_data *zend_create_generator_execute_data(zend_execute_data
 	EG(vm_stack_end) = EG(vm_stack)->end;
 
 	execute_data = zend_vm_stack_push_call_frame(
-		ZEND_CALL_TOP_FUNCTION,
+		ZEND_CALL_TOP_FUNCTION | (ZEND_CALL_INFO(call) & ZEND_CALL_CLOSURE),
 		(zend_function*)op_array,
 		num_args,
 		call->called_scope,
-		Z_OBJ(call->This),
-		NULL);
+		Z_OBJ(call->This));
+	EX(prev_execute_data) = NULL;
 	EX_NUM_ARGS() = num_args;
 
 	/* copy arguments */
@@ -2142,6 +2145,16 @@ static zend_always_inline void zend_vm_stack_extend_call_frame(zend_execute_data
 	} else {
 		*call = zend_vm_stack_copy_call_frame(*call, passed_args, additional_args);
 	}
+}
+/* }}} */
+
+static zend_always_inline zend_generator *zend_get_running_generator(zend_execute_data *execute_data) /* {{{ */
+{
+	/* The generator object is stored in EX(return_value) */
+	zend_generator *generator = (zend_generator *) EX(return_value);
+	/* However control may currently be delegated to another generator.
+	 * That's the one we're interested in. */
+	return generator;
 }
 /* }}} */
 

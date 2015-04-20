@@ -1355,7 +1355,7 @@ static int php_valid_var_name(char *var_name, size_t var_name_len) /* {{{ */
 	size_t i;
 	int ch;
 
-	if (!var_name || !var_name_len) {
+	if (!var_name_len) {
 		return 0;
 	}
 
@@ -1371,7 +1371,8 @@ static int php_valid_var_name(char *var_name, size_t var_name_len) /* {{{ */
 
 	/* And these as the rest: [a-zA-Z0-9_\x7f-\xff] */
 	if (var_name_len > 1) {
-		for (i = 1; i < var_name_len; i++) {
+		i = 1;
+		do {
 			ch = (int)((unsigned char *)var_name)[i];
 			if (var_name[i] != '_' &&
 				(ch < 48  /* 0    */ || /* 9    */ ch > 57)  &&
@@ -1381,7 +1382,7 @@ static int php_valid_var_name(char *var_name, size_t var_name_len) /* {{{ */
 			) {
 				return 0;
 			}
-		}
+		} while (++i < var_name_len);
 	}
 	return 1;
 }
@@ -1530,7 +1531,7 @@ PHP_FUNCTION(extract)
 				break;
 		}
 
-		if (Z_TYPE(final_name) != IS_NULL && php_valid_var_name(Z_STRVAL(final_name), Z_STRLEN(final_name))) {
+		if (Z_TYPE(final_name) == IS_STRING && php_valid_var_name(Z_STRVAL(final_name), Z_STRLEN(final_name))) {
 			if (extract_refs) {
 				zval *orig_var;
 
@@ -2996,6 +2997,7 @@ PHP_FUNCTION(array_count_values)
 	/* Go through input array and add values to the return array */
 	myht = Z_ARRVAL_P(input);
 	ZEND_HASH_FOREACH_VAL(myht, entry) {
+		ZVAL_DEREF(entry);
 		if (Z_TYPE_P(entry) == IS_LONG) {
 			if ((tmp = zend_hash_index_find(Z_ARRVAL_P(return_value), Z_LVAL_P(entry))) == NULL) {
 				zval data;
@@ -3312,7 +3314,7 @@ PHP_FUNCTION(array_unique)
 
 	php_set_compare_func(sort_type);
 
-	ZVAL_ARR(return_value, zend_array_dup(Z_ARRVAL_P(array)));
+	RETVAL_ARR(zend_array_dup(Z_ARRVAL_P(array)));
 
 	if (Z_ARRVAL_P(array)->nNumOfElements <= 1) {	/* nothing to do */
 		return;
@@ -3667,7 +3669,7 @@ static void php_array_intersect(INTERNAL_FUNCTION_PARAMETERS, int behavior, int 
 	}
 
 	/* copy the argument array */
-	ZVAL_ARR(return_value, zend_array_dup(Z_ARRVAL(args[0])));
+	RETVAL_ARR(zend_array_dup(Z_ARRVAL(args[0])));
 
 	/* go through the lists and look for common values */
 	while (Z_TYPE(ptrs[0]->val) != IS_UNDEF) {
@@ -4086,7 +4088,7 @@ static void php_array_diff(INTERNAL_FUNCTION_PARAMETERS, int behavior, int data_
 	}
 
 	/* copy the argument array */
-	ZVAL_ARR(return_value, zend_array_dup(Z_ARRVAL(args[0])));
+	RETVAL_ARR(zend_array_dup(Z_ARRVAL(args[0])));
 
 	/* go through the lists and look for values of ptr[0] that are not in the others */
 	while (Z_TYPE(ptrs[0]->val) != IS_UNDEF) {
@@ -4411,9 +4413,7 @@ PHP_FUNCTION(array_multisort)
 
 		ZVAL_DEREF(arg);
 		if (Z_TYPE_P(arg) == IS_ARRAY) {
-			if (Z_IMMUTABLE_P(arg)) {
-				zval_copy_ctor(arg);
-			}
+			SEPARATE_ARRAY(arg);
 			/* We see the next array, so we update the sort flags of
 			 * the previous array and reset the sort flags. */
 			if (i > 0) {
@@ -4539,6 +4539,8 @@ PHP_FUNCTION(array_multisort)
 		hash->nNextFreeElement = array_size;
 		if (repack) {
 			zend_hash_to_packed(hash);
+		} else {
+			zend_hash_rehash(hash);
 		}
 	}
 	HANDLE_UNBLOCK_INTERRUPTIONS();

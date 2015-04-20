@@ -1451,7 +1451,7 @@ ZEND_END_ARG_INFO()
 ZEND_BEGIN_ARG_INFO_EX(arginfo_htmlspecialchars, 0, 0, 1)
 	ZEND_ARG_INFO(0, string)
 	ZEND_ARG_INFO(0, quote_style)
-	ZEND_ARG_INFO(0, charset)
+	ZEND_ARG_INFO(0, encoding)
 	ZEND_ARG_INFO(0, double_encode)
 ZEND_END_ARG_INFO()
 
@@ -1463,19 +1463,20 @@ ZEND_END_ARG_INFO()
 ZEND_BEGIN_ARG_INFO_EX(arginfo_html_entity_decode, 0, 0, 1)
 	ZEND_ARG_INFO(0, string)
 	ZEND_ARG_INFO(0, quote_style)
-	ZEND_ARG_INFO(0, charset)
+	ZEND_ARG_INFO(0, encoding)
 ZEND_END_ARG_INFO()
 
 ZEND_BEGIN_ARG_INFO_EX(arginfo_htmlentities, 0, 0, 1)
 	ZEND_ARG_INFO(0, string)
 	ZEND_ARG_INFO(0, quote_style)
-	ZEND_ARG_INFO(0, charset)
+	ZEND_ARG_INFO(0, encoding)
 	ZEND_ARG_INFO(0, double_encode)
 ZEND_END_ARG_INFO()
 
 ZEND_BEGIN_ARG_INFO_EX(arginfo_get_html_translation_table, 0, 0, 0)
 	ZEND_ARG_INFO(0, table)
 	ZEND_ARG_INFO(0, quote_style)
+	ZEND_ARG_INFO(0, encoding)
 ZEND_END_ARG_INFO()
 
 /* }}} */
@@ -3383,13 +3384,13 @@ static void php_putenv_destructor(zval *zv) /* {{{ */
 	putenv_entry *pe = Z_PTR_P(zv);
 
 	if (pe->previous_value) {
-#if _MSC_VER >= 1300
-		/* VS.Net has a bug in putenv() when setting a variable that
+# if defined(PHP_WIN32)
+		/* MSVCRT has a bug in putenv() when setting a variable that
 		 * is already set; if the SetEnvironmentVariable() API call
 		 * fails, the Crt will double free() a string.
 		 * We try to avoid this by setting our own value first */
 		SetEnvironmentVariable(pe->key, "bugbug");
-#endif
+# endif
 		putenv(pe->previous_value);
 # if defined(PHP_WIN32)
 		efree(pe->previous_value);
@@ -3827,7 +3828,9 @@ PHP_FUNCTION(constant)
 	if (c) {
 		ZVAL_COPY_VALUE(return_value, c);
 		if (Z_CONSTANT_P(return_value)) {
-			zval_update_constant_ex(return_value, 1, NULL);
+			if (UNEXPECTED(zval_update_constant_ex(return_value, 1, NULL) != SUCCESS)) {
+				return;
+			}
 		}
 		zval_copy_ctor(return_value);
 	} else {

@@ -183,10 +183,6 @@ ZEND_BEGIN_ARG_INFO_EX(arginfo_date_format, 0, 0, 2)
 	ZEND_ARG_INFO(0, format)
 ZEND_END_ARG_INFO()
 
-ZEND_BEGIN_ARG_INFO_EX(arginfo_date_method_create_from_immutable, 0, 0, 1)
-	ZEND_ARG_INFO(0, DateTimeImmutable)
-ZEND_END_ARG_INFO()
-
 ZEND_BEGIN_ARG_INFO_EX(arginfo_date_method_format, 0, 0, 1)
 	ZEND_ARG_INFO(0, format)
 ZEND_END_ARG_INFO()
@@ -470,7 +466,6 @@ const zend_function_entry date_funcs_date[] = {
 	PHP_ME(DateTime,			__construct,		arginfo_date_create, ZEND_ACC_CTOR|ZEND_ACC_PUBLIC)
 	PHP_ME(DateTime,			__wakeup,			NULL, ZEND_ACC_PUBLIC)
 	PHP_ME(DateTime,			__set_state,		NULL, ZEND_ACC_PUBLIC|ZEND_ACC_STATIC)
-	PHP_ME(DateTime,			createFromImmutable,	arginfo_date_method_create_from_immutable, ZEND_ACC_PUBLIC|ZEND_ACC_STATIC)
 	PHP_ME_MAPPING(createFromFormat, date_create_from_format,	arginfo_date_create_from_format, ZEND_ACC_PUBLIC|ZEND_ACC_STATIC)
 	PHP_ME_MAPPING(getLastErrors, date_get_last_errors,	arginfo_date_get_last_errors, ZEND_ACC_PUBLIC|ZEND_ACC_STATIC)
 	PHP_ME_MAPPING(format,		date_format,		arginfo_date_method_format, 0)
@@ -1671,7 +1666,7 @@ PHPAPI void php_strftime(INTERNAL_FUNCTION_PARAMETERS, int gmt)
 			break;
 		}
 	}
-#if defined(PHP_WIN32) && _MSC_VER >= 1700
+#ifdef PHP_WIN32
 	/* VS2012 strftime() returns number of characters, not bytes.
 		See VC++11 bug id 766205. */
 	if (real_len > 0) {
@@ -2668,12 +2663,12 @@ PHP_METHOD(DateTime, __construct)
 	size_t time_str_len = 0;
 	zend_error_handling error_handling;
 
-	zend_replace_error_handling(EH_THROW, NULL, &error_handling);
-	if (SUCCESS == zend_parse_parameters(ZEND_NUM_ARGS(), "|sO!", &time_str, &time_str_len, &timezone_object, date_ce_timezone)) {
-		if (!php_date_initialize(Z_PHPDATE_P(getThis()), time_str, time_str_len, NULL, timezone_object, 1)) {
-			ZEND_CTOR_MAKE_NULL();
-		}
+	if (FAILURE == zend_parse_parameters_throw(ZEND_NUM_ARGS(), "|sO!", &time_str, &time_str_len, &timezone_object, date_ce_timezone)) {
+		return;
 	}
+
+	zend_replace_error_handling(EH_THROW, NULL, &error_handling);
+	php_date_initialize(Z_PHPDATE_P(getThis()), time_str, time_str_len, NULL, timezone_object, 1);
 	zend_restore_error_handling(&error_handling);
 }
 /* }}} */
@@ -2688,10 +2683,12 @@ PHP_METHOD(DateTimeImmutable, __construct)
 	size_t time_str_len = 0;
 	zend_error_handling error_handling;
 
-	zend_replace_error_handling(EH_THROW, NULL, &error_handling);
-	if (SUCCESS == zend_parse_parameters(ZEND_NUM_ARGS(), "|sO!", &time_str, &time_str_len, &timezone_object, date_ce_timezone)) {
-		php_date_initialize(Z_PHPDATE_P(getThis()), time_str, time_str_len, NULL, timezone_object, 1);
+	if (FAILURE == zend_parse_parameters_throw(ZEND_NUM_ARGS(), "|sO!", &time_str, &time_str_len, &timezone_object, date_ce_timezone)) {
+		return;
 	}
+
+	zend_replace_error_handling(EH_THROW, NULL, &error_handling);
+	php_date_initialize(Z_PHPDATE_P(getThis()), time_str, time_str_len, NULL, timezone_object, 1);
 	zend_restore_error_handling(&error_handling);
 }
 /* }}} */
@@ -2837,34 +2834,6 @@ PHP_METHOD(DateTime, __wakeup)
 }
 /* }}} */
 
-/* {{{ proto DateTime::createFromImmutable(DateTimeImmutable object)
-   Creates new DateTime object from an existing DateTimeImmutable object.
-*/
-PHP_METHOD(DateTime, createFromImmutable)
-{
-	zval *datetimeimmutable_object = NULL;
-	php_date_obj *new_obj = NULL;
-	php_date_obj *old_obj = NULL;
-
-	if (zend_parse_parameters(ZEND_NUM_ARGS(), "O", &datetimeimmutable_object, date_ce_immutable) == FAILURE) {
-		return;
-	}
-
-	php_date_instantiate(date_ce_date, return_value);
-	old_obj = Z_PHPDATE_P(datetimeimmutable_object);
-	new_obj = Z_PHPDATE_P(return_value);
-
-	new_obj->time = timelib_time_ctor();
-	*new_obj->time = *old_obj->time;
-	if (old_obj->time->tz_abbr) {
-		new_obj->time->tz_abbr = strdup(old_obj->time->tz_abbr);
-	}
-	if (old_obj->time->tz_info) {
-		new_obj->time->tz_info = old_obj->time->tz_info;
-	}
-}
-/* }}} */
-
 /* Helper function used to add an associative array of warnings and errors to a zval */
 static void zval_from_error_container(zval *z, timelib_error_container *error) /* {{{ */
 {
@@ -2967,7 +2936,7 @@ void php_date_do_return_parsed_time(INTERNAL_FUNCTION_PARAMETERS, timelib_time *
 			add_assoc_long(&element, "weekdays", parsed_time->relative.special.amount);
 		}
 		if (parsed_time->relative.first_last_day_of) {
-			add_assoc_bool(&element, parsed_time->relative.first_last_day_of == 1 ? "first_day_of_month" : "last_day_of_month", 1);
+			add_assoc_bool(&element, parsed_time->relative.first_last_day_of == TIMELIB_SPECIAL_FIRST_DAY_OF_MONTH ? "first_day_of_month" : "last_day_of_month", 1);
 		}
 		add_assoc_zval(return_value, "relative", &element);
 	}
@@ -3661,6 +3630,7 @@ PHP_FUNCTION(timezone_open)
 	}
 	tzobj = Z_PHPTIMEZONE_P(php_date_instantiate(date_ce_timezone, return_value));
 	if (SUCCESS != timezone_initialize(tzobj, tz)) {
+		zval_ptr_dtor(return_value);
 		RETURN_FALSE;
 	}
 }
@@ -3676,13 +3646,13 @@ PHP_METHOD(DateTimeZone, __construct)
 	php_timezone_obj *tzobj;
 	zend_error_handling error_handling;
 
-	zend_replace_error_handling(EH_THROW, NULL, &error_handling);
-	if (SUCCESS == zend_parse_parameters(ZEND_NUM_ARGS(), "s", &tz, &tz_len)) {
-		tzobj = Z_PHPTIMEZONE_P(getThis());
-		if (FAILURE == timezone_initialize(tzobj, tz)) {
-			ZEND_CTOR_MAKE_NULL();
-		}
+	if (FAILURE == zend_parse_parameters_throw(ZEND_NUM_ARGS(), "s", &tz, &tz_len)) {
+		return;
 	}
+
+	zend_replace_error_handling(EH_THROW, NULL, &error_handling);
+	tzobj = Z_PHPTIMEZONE_P(getThis());
+	timezone_initialize(tzobj, tz);
 	zend_restore_error_handling(&error_handling);
 }
 /* }}} */
@@ -4107,15 +4077,15 @@ PHP_METHOD(DateInterval, __construct)
 	timelib_rel_time *reltime;
 	zend_error_handling error_handling;
 
+	if (zend_parse_parameters_throw(ZEND_NUM_ARGS(), "s", &interval_string, &interval_string_length) == FAILURE) {
+		return;
+	}
+
 	zend_replace_error_handling(EH_THROW, NULL, &error_handling);
-	if (zend_parse_parameters(ZEND_NUM_ARGS(), "s", &interval_string, &interval_string_length) == SUCCESS) {
-		if (date_interval_initialize(&reltime, interval_string, interval_string_length) == SUCCESS) {
-			diobj = Z_PHPINTERVAL_P(getThis());
-			diobj->diff = reltime;
-			diobj->initialized = 1;
-		} else {
-			ZEND_CTOR_MAKE_NULL();
-		}
+	if (date_interval_initialize(&reltime, interval_string, interval_string_length) == SUCCESS) {
+		diobj = Z_PHPINTERVAL_P(getThis());
+		diobj->diff = reltime;
+		diobj->initialized = 1;
 	}
 	zend_restore_error_handling(&error_handling);
 }

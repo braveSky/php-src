@@ -224,12 +224,12 @@ struct _zend_array {
 #endif
 
 #define HT_HASH_EX(data, idx) \
-	((uint32_t*)(data))[(int)(idx)]
+	((uint32_t*)(data))[(int32_t)(idx)]
 #define HT_HASH(ht, idx) \
 	HT_HASH_EX((ht)->arData, idx)
 
 #define HT_HASH_SIZE(ht) \
-	((-(int)(ht)->nTableMask) * sizeof(uint32_t))
+	((-(int32_t)(ht)->nTableMask) * sizeof(uint32_t))
 #define HT_DATA_SIZE(ht) \
 	((ht)->nTableSize * sizeof(Bucket))
 #define HT_SIZE(ht) \
@@ -697,6 +697,14 @@ static zend_always_inline zend_uchar zval_get_type(const zval* pz) {
 		zval *__z = (z);										\
 		Z_REF_P(__z) = (r);										\
 		Z_TYPE_INFO_P(__z) = IS_REFERENCE_EX;					\
+	} while (0)
+
+#define ZVAL_NEW_EMPTY_REF(z) do {								\
+		zend_reference *_ref = emalloc(sizeof(zend_reference));	\
+		GC_REFCOUNT(_ref) = 1;									\
+		GC_TYPE_INFO(_ref) = IS_REFERENCE;						\
+		Z_REF_P(z) = _ref;										\
+		Z_TYPE_INFO_P(z) = IS_REFERENCE_EX;						\
 	} while (0)
 
 #define ZVAL_NEW_REF(z, r) do {									\

@@ -55,6 +55,13 @@ ZEND_API void zend_verify_internal_return_error(const zend_function *zf, const c
 
 static zend_always_inline zval* zend_assign_to_variable(zval *variable_ptr, zval *value, zend_uchar value_type)
 {
+	zend_refcounted *ref = NULL;
+
+	if ((value_type & (IS_VAR|IS_CV)) && Z_ISREF_P(value)) {
+		ref = Z_COUNTED_P(value);
+		value = Z_REFVAL_P(value);
+	}
+
 	do {
 		if (UNEXPECTED(Z_REFCOUNTED_P(variable_ptr))) {
 			zend_refcounted *garbage;
@@ -81,12 +88,18 @@ static zend_always_inline zval* zend_assign_to_variable(zval *variable_ptr, zval
 					if (UNEXPECTED(Z_OPT_COPYABLE_P(variable_ptr))) {
 						zval_copy_ctor_func(variable_ptr);
 					}
-				} else if (value_type != IS_TMP_VAR) {
+				} else if (value_type == IS_CV) {
 					if (UNEXPECTED(Z_OPT_REFCOUNTED_P(variable_ptr))) {
 						Z_ADDREF_P(variable_ptr);
 					}
+				} else if (/* value_type == IS_VAR && */ UNEXPECTED(ref)) {
+					if (UNEXPECTED(--GC_REFCOUNT(ref) == 0)) {
+						efree_size(ref, sizeof(zend_reference));
+					} else if (Z_OPT_REFCOUNTED_P(variable_ptr)) {
+						Z_ADDREF_P(variable_ptr);
+					}
 				}
-				_zval_dtor_func_for_ptr(garbage ZEND_FILE_LINE_CC);
+				zval_dtor_func_for_ptr(garbage);
 				return variable_ptr;
 			} else { /* we need to split */
 				/* optimized version of GC_ZVAL_CHECK_POSSIBLE_ROOT(variable_ptr) */
@@ -104,8 +117,14 @@ static zend_always_inline zval* zend_assign_to_variable(zval *variable_ptr, zval
 		if (UNEXPECTED(Z_OPT_COPYABLE_P(variable_ptr))) {
 			zval_copy_ctor_func(variable_ptr);
 		}
-	} else if (value_type != IS_TMP_VAR) {
+	} else if (value_type == IS_CV) {
 		if (UNEXPECTED(Z_OPT_REFCOUNTED_P(variable_ptr))) {
+			Z_ADDREF_P(variable_ptr);
+		}
+	} else if (/* value_type == IS_VAR && */ UNEXPECTED(ref)) {
+		if (UNEXPECTED(--GC_REFCOUNT(ref) == 0)) {
+			efree_size(ref, sizeof(zend_reference));
+		} else if (Z_OPT_REFCOUNTED_P(variable_ptr)) {
 			Z_ADDREF_P(variable_ptr);
 		}
 	}
@@ -113,8 +132,6 @@ static zend_always_inline zval* zend_assign_to_variable(zval *variable_ptr, zval
 }
 
 ZEND_API int zval_update_constant(zval *pp, zend_bool inline_change);
-ZEND_API int zval_update_constant_inline_change(zval *pp, zend_class_entry *scope);
-ZEND_API int zval_update_constant_no_inline_change(zval *pp, zend_class_entry *scope);
 ZEND_API int zval_update_constant_ex(zval *pp, zend_bool inline_change, zend_class_entry *scope);
 
 /* dedicated Zend executor functions - do not use! */
@@ -145,7 +162,7 @@ static zend_always_inline zval* zend_vm_stack_alloc(size_t size)
 	return (zval*)top;
 }
 
-static zend_always_inline zend_execute_data *zend_vm_stack_push_call_frame_ex(uint32_t used_stack, uint32_t call_info, zend_function *func, uint32_t num_args, zend_class_entry *called_scope, zend_object *object, zend_execute_data *prev)
+static zend_always_inline zend_execute_data *zend_vm_stack_push_call_frame_ex(uint32_t used_stack, uint32_t call_info, zend_function *func, uint32_t num_args, zend_class_entry *called_scope, zend_object *object)
 {
 	zend_execute_data *call = (zend_execute_data*)zend_vm_stack_alloc(used_stack);
 
@@ -154,7 +171,6 @@ static zend_always_inline zend_execute_data *zend_vm_stack_push_call_frame_ex(ui
 	ZEND_SET_CALL_INFO(call, call_info);
 	ZEND_CALL_NUM_ARGS(call) = num_args;
 	call->called_scope = called_scope;
-	call->prev_execute_data = prev;
 	return call;
 }
 
@@ -168,24 +184,37 @@ static zend_always_inline uint32_t zend_vm_calc_used_stack(uint32_t num_args, ze
 	return used_stack * sizeof(zval);
 }
 
-static zend_always_inline zend_execute_data *zend_vm_stack_push_call_frame(uint32_t call_info, zend_function *func, uint32_t num_args, zend_class_entry *called_scope, zend_object *object, zend_execute_data *prev)
+static zend_always_inline zend_execute_data *zend_vm_stack_push_call_frame(uint32_t call_info, zend_function *func, uint32_t num_args, zend_class_entry *called_scope, zend_object *object)
 {
 	uint32_t used_stack = zend_vm_calc_used_stack(num_args, func);
 
 	return zend_vm_stack_push_call_frame_ex(used_stack, call_info,
-		func, num_args, called_scope, object, prev);
+		func, num_args, called_scope, object);
 }
 
-static zend_always_inline void zend_vm_stack_free_extra_args(zend_execute_data *call)
+static zend_always_inline void zend_vm_stack_free_extra_args_ex(uint32_t call_info, zend_execute_data *call)
 {
-	if (ZEND_CALL_INFO(call) & ZEND_CALL_FREE_EXTRA_ARGS) {
+	if (UNEXPECTED(call_info & ZEND_CALL_FREE_EXTRA_ARGS)) {
 		zval *end = ZEND_CALL_VAR_NUM(call, call->func->op_array.last_var + call->func->op_array.T);
  		zval *p = end + (ZEND_CALL_NUM_ARGS(call) - call->func->op_array.num_args);
 		do {
 			p--;
-			zval_ptr_dtor_nogc(p);
+			if (Z_REFCOUNTED_P(p)) {
+				if (!Z_DELREF_P(p)) {
+					zend_refcounted *r = Z_COUNTED_P(p);
+					ZVAL_NULL(p);
+					zval_dtor_func_for_ptr(r);
+				} else {
+					GC_ZVAL_CHECK_POSSIBLE_ROOT(p);
+				}
+			}
 		} while (p != end);
  	}
+}
+
+static zend_always_inline void zend_vm_stack_free_extra_args(zend_execute_data *call)
+{
+	zend_vm_stack_free_extra_args_ex(ZEND_CALL_INFO(call), call);
 }
 
 static zend_always_inline void zend_vm_stack_free_args(zend_execute_data *call)
@@ -198,7 +227,13 @@ static zend_always_inline void zend_vm_stack_free_args(zend_execute_data *call)
 
 		do {
 			p--;
-			zval_ptr_dtor_nogc(p);
+			if (Z_REFCOUNTED_P(p)) {
+				if (!Z_DELREF_P(p)) {
+					zend_refcounted *r = Z_COUNTED_P(p);
+					ZVAL_NULL(p);
+					zval_dtor_func_for_ptr(r);
+				}
+			}
 		} while (p != end);
 	}
 }

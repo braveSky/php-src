@@ -113,9 +113,9 @@ ZEND_END_ARG_INFO()
 	  RETURN_FALSE;	\
   }	\
 
-static PHP_FUNCTION(dbstmt_constructor) /* {{{ */
+static PHP_FUNCTION(dbrow_constructor) /* {{{ */
 {
-	php_error_docref(NULL, E_ERROR, "You should not create a PDOStatement manually");
+	zend_throw_exception_ex(php_pdo_get_exception(), 0, "You may not create a PDORow manually");
 }
 /* }}} */
 
@@ -262,7 +262,8 @@ static void get_lazy_object(pdo_stmt_t *stmt, zval *return_value) /* {{{ */
 		zend_object_std_init(&row->std, pdo_row_ce);
 		ZVAL_OBJ(&stmt->lazy_object_ref, &row->std);
 		row->std.handlers = &pdo_row_object_handlers;
-		stmt->std.gc.refcount++;
+		GC_REFCOUNT(&stmt->std)++;
+		GC_REFCOUNT(&row->std)--;
 	}
 	ZVAL_COPY(return_value, &stmt->lazy_object_ref);
 }
@@ -802,7 +803,7 @@ static int do_fetch_func_prepare(pdo_stmt_t *stmt) /* {{{ */
 }
 /* }}} */
 
-static int do_fetch_opt_finish(pdo_stmt_t *stmt, int free_ctor_agrs) /* {{{ */
+static void do_fetch_opt_finish(pdo_stmt_t *stmt, int free_ctor_agrs) /* {{{ */
 {
 	/* fci.size is used to check if it is valid */
 	if (stmt->fetch.cls.fci.size && stmt->fetch.cls.fci.params) {
@@ -825,7 +826,6 @@ static int do_fetch_opt_finish(pdo_stmt_t *stmt, int free_ctor_agrs) /* {{{ */
 		efree(stmt->fetch.func.values);
 		stmt->fetch.func.values = NULL;
 	}
-	return 1;
 }
 /* }}} */
 
@@ -945,7 +945,9 @@ static int do_fetch(pdo_stmt_t *stmt, int do_bind, zval *return_value, enum pdo_
 					return 0;
 				}
 				if ((flags & PDO_FETCH_SERIALIZE) == 0) {
-					object_init_ex(return_value, ce);
+					if (UNEXPECTED(object_init_ex(return_value, ce) != SUCCESS)) {
+						return 0;
+					}
 					if (!stmt->fetch.cls.fci.size) {
 						if (!do_fetch_class_prepare(stmt))
 						{
@@ -2336,6 +2338,7 @@ static void free_statement(pdo_stmt_t *stmt)
 	}
 
 	if (!Z_ISUNDEF(stmt->fetch.into) && stmt->default_fetch_type == PDO_FETCH_INTO) {
+		zval_ptr_dtor(&stmt->fetch.into);
 		ZVAL_UNDEF(&stmt->fetch.into);
 	}
 
@@ -2640,7 +2643,7 @@ static union _zend_function *row_get_ctor(zend_object *object)
 	ctor.type = ZEND_INTERNAL_FUNCTION;
 	ctor.function_name = zend_string_init("__construct", sizeof("__construct") - 1, 0);
 	ctor.scope = pdo_row_ce;
-	ctor.handler = ZEND_FN(dbstmt_constructor);
+	ctor.handler = ZEND_FN(dbrow_constructor);
 	ctor.fn_flags = ZEND_ACC_PUBLIC;
 
 	return (union _zend_function*)&ctor;

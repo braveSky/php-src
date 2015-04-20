@@ -169,10 +169,12 @@ END_EXTERN_C()
 #define ZEND_POST_INC_OBJ                    134
 #define ZEND_POST_DEC_OBJ                    135
 #define ZEND_ASSIGN_OBJ                      136
+#define ZEND_OP_DATA                         137
 #define ZEND_INSTANCEOF                      138
 #define ZEND_DECLARE_CLASS                   139
 #define ZEND_DECLARE_INHERITED_CLASS         140
 #define ZEND_DECLARE_FUNCTION                141
+#define ZEND_YIELD_FROM                      142
 #define ZEND_DECLARE_CONST                   143
 #define ZEND_ADD_INTERFACE                   144
 #define ZEND_DECLARE_INHERITED_CLASS_DELAYED 145
@@ -188,6 +190,7 @@ END_EXTERN_C()
 #define ZEND_BIND_TRAITS                     155
 #define ZEND_SEPARATE                        156
 #define ZEND_FETCH_CLASS_NAME                157
+#define ZEND_CALL_TRAMPOLINE                 158
 #define ZEND_DISCARD_EXCEPTION               159
 #define ZEND_YIELD                           160
 #define ZEND_GENERATOR_RETURN                161

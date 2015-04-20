@@ -868,7 +868,7 @@ ZEND_API int ZEND_FASTCALL add_function(zval *result, zval *op1, zval *op2) /* {
 					zendi_convert_scalar_to_number(op2, op2_copy, result);
 					converted = 1;
 				} else {
-					zend_error(E_ERROR, "Unsupported operand types");
+					zend_error(E_EXCEPTION | E_ERROR, "Unsupported operand types");
 					return FAILURE; /* unknown datatype */
 				}
 		}
@@ -921,7 +921,7 @@ ZEND_API int ZEND_FASTCALL sub_function(zval *result, zval *op1, zval *op2) /* {
 					zendi_convert_scalar_to_number(op2, op2_copy, result);
 					converted = 1;
 				} else {
-					zend_error(E_ERROR, "Unsupported operand types");
+					zend_error(E_EXCEPTION | E_ERROR, "Unsupported operand types");
 					return FAILURE; /* unknown datatype */
 				}
 		}
@@ -968,7 +968,7 @@ ZEND_API int ZEND_FASTCALL mul_function(zval *result, zval *op1, zval *op2) /* {
 					zendi_convert_scalar_to_number(op2, op2_copy, result);
 					converted = 1;
 				} else {
-					zend_error(E_ERROR, "Unsupported operand types");
+					zend_error(E_EXCEPTION | E_ERROR, "Unsupported operand types");
 					return FAILURE; /* unknown datatype */
 				}
 		}
@@ -1056,7 +1056,7 @@ ZEND_API int ZEND_FASTCALL pow_function(zval *result, zval *op1, zval *op2) /* {
 					}
 					converted = 1;
 				} else {
-					zend_error(E_ERROR, "Unsupported operand types");
+					zend_error(E_EXCEPTION | E_ERROR, "Unsupported operand types");
 					return FAILURE;
 				}
 		}
@@ -1074,8 +1074,8 @@ ZEND_API int ZEND_FASTCALL div_function(zval *result, zval *op1, zval *op2) /* {
 			case TYPE_PAIR(IS_LONG, IS_LONG):
 				if (Z_LVAL_P(op2) == 0) {
 					zend_error(E_WARNING, "Division by zero");
-					ZVAL_FALSE(result);
-					return FAILURE;			/* division by zero */
+					ZVAL_DOUBLE(result, ((double) Z_LVAL_P(op1) / (double) Z_LVAL_P(op2)));
+					return SUCCESS;
 				} else if (Z_LVAL_P(op2) == -1 && Z_LVAL_P(op1) == ZEND_LONG_MIN) {
 					/* Prevent overflow error/crash */
 					ZVAL_DOUBLE(result, (double) ZEND_LONG_MIN / -1);
@@ -1091,8 +1091,6 @@ ZEND_API int ZEND_FASTCALL div_function(zval *result, zval *op1, zval *op2) /* {
 			case TYPE_PAIR(IS_DOUBLE, IS_LONG):
 				if (Z_LVAL_P(op2) == 0) {
 					zend_error(E_WARNING, "Division by zero");
-					ZVAL_FALSE(result);
-					return FAILURE;			/* division by zero */
 				}
 				ZVAL_DOUBLE(result, Z_DVAL_P(op1) / (double)Z_LVAL_P(op2));
 				return SUCCESS;
@@ -1100,8 +1098,6 @@ ZEND_API int ZEND_FASTCALL div_function(zval *result, zval *op1, zval *op2) /* {
 			case TYPE_PAIR(IS_LONG, IS_DOUBLE):
 				if (Z_DVAL_P(op2) == 0) {
 					zend_error(E_WARNING, "Division by zero");
-					ZVAL_FALSE(result);
-					return FAILURE;			/* division by zero */
 				}
 				ZVAL_DOUBLE(result, (double)Z_LVAL_P(op1) / Z_DVAL_P(op2));
 				return SUCCESS;
@@ -1109,8 +1105,6 @@ ZEND_API int ZEND_FASTCALL div_function(zval *result, zval *op1, zval *op2) /* {
 			case TYPE_PAIR(IS_DOUBLE, IS_DOUBLE):
 				if (Z_DVAL_P(op2) == 0) {
 					zend_error(E_WARNING, "Division by zero");
-					ZVAL_FALSE(result);
-					return FAILURE;			/* division by zero */
 				}
 				ZVAL_DOUBLE(result, Z_DVAL_P(op1) / Z_DVAL_P(op2));
 				return SUCCESS;
@@ -1127,7 +1121,7 @@ ZEND_API int ZEND_FASTCALL div_function(zval *result, zval *op1, zval *op2) /* {
 					zendi_convert_scalar_to_number(op2, op2_copy, result);
 					converted = 1;
 				} else {
-					zend_error(E_ERROR, "Unsupported operand types");
+					zend_error(E_EXCEPTION | E_ERROR, "Unsupported operand types");
 					return FAILURE; /* unknown datatype */
 				}
 		}
@@ -1146,9 +1140,14 @@ ZEND_API int ZEND_FASTCALL mod_function(zval *result, zval *op1, zval *op2) /* {
 	}
 
 	if (op2_lval == 0) {
-		zend_error(E_WARNING, "Division by zero");
-		ZVAL_FALSE(result);
-		return FAILURE;			/* modulus by zero */
+		/* modulus by zero */
+		if (EG(current_execute_data) && !CG(in_compilation)) {
+			zend_throw_exception_ex(NULL, 0, "Division by zero");
+		} else {
+			zend_error_noreturn(E_ERROR, "Division by zero");
+		}
+		ZVAL_UNDEF(result);
+		return FAILURE;
 	}
 
 	if (op2_lval == -1) {
@@ -1263,7 +1262,7 @@ try_again:
 		default:
 			ZEND_TRY_UNARY_OBJECT_OPERATION(ZEND_BW_NOT);
 
-			zend_error(E_ERROR, "Unsupported operand types");
+			zend_error(E_EXCEPTION | E_ERROR, "Unsupported operand types");
 			return FAILURE;
 	}
 }
@@ -1459,8 +1458,12 @@ ZEND_API int ZEND_FASTCALL shift_left_function(zval *result, zval *op1, zval *op
 			ZVAL_LONG(result, 0);
 			return SUCCESS;
 		} else {
-			zend_error(E_WARNING, "Bit shift by negative number");
-			ZVAL_FALSE(result);
+			if (EG(current_execute_data) && !CG(in_compilation)) {
+				zend_throw_exception_ex(NULL, 0, "Bit shift by negative number");
+			} else {
+				zend_error_noreturn(E_ERROR, "Bit shift by negative number");
+			}
+			ZVAL_UNDEF(result);
 			return FAILURE;
 		}
 	}
@@ -1486,8 +1489,12 @@ ZEND_API int ZEND_FASTCALL shift_right_function(zval *result, zval *op1, zval *o
 			ZVAL_LONG(result, (op1_lval < 0) ? -1 : 0);
 			return SUCCESS;
 		} else {
-			zend_error(E_WARNING, "Bit shift by negative number");
-			ZVAL_FALSE(result);
+			if (EG(current_execute_data) && !CG(in_compilation)) {
+				zend_throw_exception_ex(NULL, 0, "Bit shift by negative number");
+			} else {
+				zend_error_noreturn(E_ERROR, "Bit shift by negative number");
+			}
+			ZVAL_UNDEF(result);
 			return FAILURE;
 		}
 	}
@@ -1544,8 +1551,10 @@ ZEND_API int ZEND_FASTCALL concat_function(zval *result, zval *op1, zval *op2) /
 		size_t result_len = op1_len + op2_len;
 		zend_string *result_str;
 
-		if (op1_len > SIZE_MAX - op2_len) {
-			zend_error_noreturn(E_ERROR, "String size overflow");
+		if (UNEXPECTED(op1_len > SIZE_MAX - op2_len)) {
+			zend_error(E_EXCEPTION | E_ERROR, "String size overflow");
+			ZVAL_FALSE(result);
+			return FAILURE;
 		}
 
 		if (result == op1 && Z_REFCOUNTED_P(result)) {

@@ -2032,10 +2032,15 @@ static size_t php_openssl_sockop_io(int read, php_stream *stream, char *buf, siz
 					stream->eof = (retry == 0 && errno != EAGAIN && !SSL_pending(sslsock->ssl_handle));
 				}
 
+				/* Don't loop indefinitely in non-blocking mode if no data is available */
+				if (began_blocked == 0) {
+					break;
+				}
+
 				/* Now, if we have to wait some time, and we're supposed to be blocking, wait for the socket to become
 				 * available. Now, php_pollfd_for uses select to wait up to our time_left value only...
 				 */
-				if (retry && began_blocked) {
+				if (retry) {
 					if (read) {
 						php_pollfd_for(sslsock->s.socket, (err == SSL_ERROR_WANT_WRITE) ?
 							(POLLOUT|POLLPRI) : (POLLIN|POLLPRI), has_timeout ? &left_time : NULL);
@@ -2592,6 +2597,7 @@ php_stream *php_openssl_ssl_socket_factory(const char *proto, size_t protolen,
 		sslsock->method = STREAM_CRYPTO_METHOD_SSLv2_CLIENT;
 #else
 		php_error_docref(NULL, E_WARNING, "SSLv2 support is not compiled into the OpenSSL library against which PHP is linked");
+		php_stream_close(stream);
 		return NULL;
 #endif
 	} else if (strncmp(proto, "sslv3", protolen) == 0) {
@@ -2600,6 +2606,7 @@ php_stream *php_openssl_ssl_socket_factory(const char *proto, size_t protolen,
 		sslsock->method = STREAM_CRYPTO_METHOD_SSLv3_CLIENT;
 #else
 		php_error_docref(NULL, E_WARNING, "SSLv3 support is not compiled into the OpenSSL library against which PHP is linked");
+		php_stream_close(stream);
 		return NULL;
 #endif
 	} else if (strncmp(proto, "tls", protolen) == 0) {
@@ -2614,6 +2621,7 @@ php_stream *php_openssl_ssl_socket_factory(const char *proto, size_t protolen,
 		sslsock->method = STREAM_CRYPTO_METHOD_TLSv1_1_CLIENT;
 #else
 		php_error_docref(NULL, E_WARNING, "TLSv1.1 support is not compiled into the OpenSSL library against which PHP is linked");
+		php_stream_close(stream);
 		return NULL;
 #endif
 	} else if (strncmp(proto, "tlsv1.2", protolen) == 0) {
@@ -2622,6 +2630,7 @@ php_stream *php_openssl_ssl_socket_factory(const char *proto, size_t protolen,
 		sslsock->method = STREAM_CRYPTO_METHOD_TLSv1_2_CLIENT;
 #else
 		php_error_docref(NULL, E_WARNING, "TLSv1.2 support is not compiled into the OpenSSL library against which PHP is linked");
+		php_stream_close(stream);
 		return NULL;
 #endif
 	}

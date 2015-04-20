@@ -8,6 +8,19 @@
   . Update the MIME type list from the one shipped by Apache HTTPD. (Adam)
 
 - Core:
+  . Fixed bug #69485 (Double free on zend_list_dtor). (Laruence)
+  . Fixed bug #69427 (Segfault on magic method __call of private method in 
+    superclass). (Laruence)
+  . Improved __call() and __callStatic() magic method handling. Now they are
+    called in a stackless way using ZEND_CALL_TRAMPOLINE opcode, without
+    additional stack frame. (Laruence, Dmitry)
+  . Optimized strings concatenation. (Dmitry, Laruence)
+  . Fixed weird operators behavior. Division by zero now emits warning and 
+    returns +/-INF, modulo by zero and intdid() throws an exception, shifts
+    by negative offset throw exceptions. Compile-time evaluation of division
+    by zero is disabled. (Dmitry, Andrea, Nikita)
+  . Fixed bug #69371 (Hash table collision leads to inaccessible array keys).
+    (Laruence)
   . Fixed bug #68933 (Invalid read of size 8 in zend_std_read_property).
     (Laruence, arjen at react dot com)
   . Fixed bug #68868 (Segfault in clean_non_persistent_constants() in SugarCRM
@@ -29,6 +42,8 @@
   . Fixed bug #65419 (Inside trait, self::class != __CLASS__). (Julien)
   . Fixed bug #65576 (Constructor from trait conflicts with inherited
     constructor). (dunglas at gmail dot com)
+  . Fixed bug #63734 (Garbage collector can free zvals that are still
+    referenced). (Dmitry)
   . Removed ZEND_ACC_FINAL_CLASS, promoting ZEND_ACC_FINAL as final class 
     modifier. (Guilherme Blanco)
   . is_long() & is_integer() is now an alias of is_int(). (Kalle)
@@ -56,9 +71,15 @@
   . Added error_clear_last() function. (Reeze Xia)
   . Fixed bug #68797 (Number 2.2250738585072012e-308 converted incorrectly).
     (Anatol)
+  . Improved zend_qsort(using hybrid sorting algo) for better performance, 
+    and also renamed zend_qsort to zend_sort. (Laruence)
+  . Added stable sorting algo zend_insert_sort. (Laruence)
   . Implemented the RFC `Scalar Type Decalarations v0.5`. (Anthony)
   . Implemented the RFC `Group Use Declarations`. (Marcio)
   . Implemented the RFC `Continue Output Buffering`. (Mike)
+  . Implemented the RFC `Constructor behaviour of internal classes`. (Dan, Dmitry)
+  . Implemented the RFC `Fix "foreach" behavior`. (Dmitry)
+  . Implemented the RFC `Generator Delegation`. (Bob)
 
 - Curl:
   . Fixed bug #68937 (Segfault in curl_multi_exec). (Laruence)
@@ -96,6 +117,10 @@
   . Fixed bug #68945 (Unknown admin values segfault pools). (Laruence)
   . Fixed bug #65933 (Cannot specify config lines longer than 1024 bytes). (Chris Wright)
   . Implement request #67106 (Split main fpm config). (Elan Ruusamäe, Remi)
+
+- Intl:
+  . Removed deprecated aliases datefmt_set_timezone_id() and
+    IntlDateFormatter::setTimeZoneID(). (Nikita)
 
 - JSON
   . Replace non-free JSON parser with a parser from Jsond extension, fixes #63520
@@ -150,6 +175,10 @@
   . Fixed bug #68361 (Segmentation fault on SoapClient::__getTypes). (Laruence)
 
 - SPL:
+  . Changed ArrayIterator implementation using zend_hash_iterator_... API.
+    Allowed modification of iterated ArrayObject using the same behavior
+    as proposed in `Fix "foreach" behavior`. Removed "Array was modified
+    outside object and internal position is no longer valid" hack. (Dmitry)
   . Implemented #67886 (SplPriorityQueue/SplHeap doesn't expose extractFlags
     nor curruption state). (Julien)
   . Fixed bug #66405 (RecursiveDirectoryIterator::CURRENT_AS_PATHNAME
@@ -161,6 +190,8 @@
     required_num_args). (Julien)
 
 - Standard:
+  . Fixed bug #69325 (php_copy_file_ex does not pass the argument).
+    (imbolk at gmail dot com)
   . Fixed bug #69299 (Regression in array_filter's $flag argument in PHP 7).
     (Laruence)
   . Removed call_user_method() and call_user_method_array() functions. (Kalle)
@@ -173,6 +204,7 @@
   . Fixed bug #65272 (flock() out parameter not set correctly in windows).
     (Daniel Lowrey)
   . Added preg_replace_callback_array function. (Wei Dai)
+  . Deprecated salt option to password_hash. (Anthony) 
 
 - Streams:
   . Fixed bug #68532 (convert.base64-encode omits padding bytes).

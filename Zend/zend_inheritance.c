@@ -23,6 +23,7 @@
 #include "zend_execute.h"
 #include "zend_inheritance.h"
 #include "zend_smart_str.h"
+#include "zend_inheritance.h"
 
 static void ptr_dtor(zval *zv) /* {{{ */
 {
@@ -564,12 +565,10 @@ static void do_inheritance_check_on_method(zend_function *child, zend_function *
 		if (UNEXPECTED(!zend_do_perform_implementation_check(child, child->common.prototype))) {
 			zend_error_noreturn(E_COMPILE_ERROR, "Declaration of %s::%s() must be compatible with %s", ZEND_FN_SCOPE_NAME(child), child->common.function_name->val, zend_get_function_declaration(child->common.prototype)->val);
 		}
-	} else if (EG(error_reporting) & E_STRICT || Z_TYPE(EG(user_error_handler)) != IS_UNDEF) { /* Check E_STRICT (or custom error handler) before the check so that we save some time */
-		if (UNEXPECTED(!zend_do_perform_implementation_check(child, parent))) {
-			zend_string *method_prototype = zend_get_function_declaration(parent);
-			zend_error(E_STRICT, "Declaration of %s::%s() should be compatible with %s", ZEND_FN_SCOPE_NAME(child), child->common.function_name->val, method_prototype->val);
-			zend_string_free(method_prototype);
-		}
+	} else if (UNEXPECTED(!zend_do_perform_implementation_check(child, parent))) {
+		zend_string *method_prototype = zend_get_function_declaration(parent);
+		zend_error(E_WARNING, "Declaration of %s::%s() should be compatible with %s", ZEND_FN_SCOPE_NAME(child), child->common.function_name->val, method_prototype->val);
+		zend_string_free(method_prototype);
 	}
 }
 /* }}} */
@@ -773,7 +772,7 @@ ZEND_API void zend_do_inheritance(zend_class_entry *ce, zend_class_entry *parent
 
 	if (parent_ce->type != ce->type) {
 		/* User class extends internal class */
-		zend_update_class_constants(parent_ce );
+		zend_update_class_constants(parent_ce);
 		if (parent_ce->default_static_members_count) {
 			int i = ce->default_static_members_count + parent_ce->default_static_members_count;
 
@@ -1109,6 +1108,7 @@ static void zend_add_trait_method(zend_class_entry *ce, const char *name, zend_s
 			/* inherited members are overridden by members inserted by traits */
 			/* check whether the trait method fulfills the inheritance requirements */
 			do_inheritance_check_on_method(fn, existing_fn);
+			fn->common.prototype = NULL;
 		}
 	}
 
@@ -1493,16 +1493,10 @@ static void zend_do_traits_property_binding(zend_class_entry *ce) /* {{{ */
 								property_info->ce->name->val,
 								prop_name->val,
 								ce->name->val);
-					} else {
-						zend_error(E_STRICT,
-							   "%s and %s define the same property ($%s) in the composition of %s. This might be incompatible, to improve maintainability consider using accessor methods in traits instead. Class was composed",
-								find_first_definition(ce, i, prop_name, coliding_prop->ce)->name->val,
-								property_info->ce->name->val,
-								prop_name->val,
-								ce->name->val);
-						zend_string_release(prop_name);
-						continue;
 					}
+
+					zend_string_release(prop_name);
+					continue;
 				}
 			}
 
@@ -1596,9 +1590,35 @@ ZEND_API void zend_do_bind_traits(zend_class_entry *ce) /* {{{ */
 	/* verify that all abstract methods from traits have been implemented */
 	zend_verify_abstract_class(ce);
 
+	/* Emit E_DEPRECATED for PHP 4 constructors */
+	zend_check_deprecated_constructor(ce);
+
 	/* now everything should be fine and an added ZEND_ACC_IMPLICIT_ABSTRACT_CLASS should be removed */
 	if (ce->ce_flags & ZEND_ACC_IMPLICIT_ABSTRACT_CLASS) {
 		ce->ce_flags -= ZEND_ACC_IMPLICIT_ABSTRACT_CLASS;
+	}
+}
+/* }}} */
+
+
+static zend_bool zend_has_deprecated_constructor(const zend_class_entry *ce) /* {{{ */
+{
+	const zend_string *constructor_name;
+	if (!ce->constructor) {
+		return 0;
+	}
+	constructor_name = ce->constructor->common.function_name;
+	return !zend_binary_strcasecmp(
+		ce->name->val, ce->name->len,
+		constructor_name->val, constructor_name->len
+	);
+}
+/* }}} */
+
+void zend_check_deprecated_constructor(const zend_class_entry *ce) /* {{{ */
+{
+	if (zend_has_deprecated_constructor(ce)) {
+		zend_error(E_DEPRECATED, "Methods with the same name as their class will not be constructors in a future version of PHP; %s has a deprecated constructor", ce->name->val);
 	}
 }
 /* }}} */

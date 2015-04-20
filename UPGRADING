@@ -320,8 +320,82 @@ Relevant RFCs:
 * https://wiki.php.net/rfc/remove_hex_support_in_numeric_strings
 * https://wiki.php.net/rfc/unicode_escape
 
+Changes to error handling
+-------------------------
+
+* The new base class of the exception hierarchy is BaseException, from which
+  Exception extends. Typehints in exception handling code may need to be changed
+  to account for this.
+
+* Some fatal errors and recoverable fatal errors now throw an EngineException
+  instead. As EngineException extends BaseException but not Exception, these
+  exceptions will not caught by existing try/catch blocks.
+
+  For the recoverable fatal errors which have been converted into an exception,
+  it is no longer possible to silently ignore the error from an error handler.
+  In particular, it is no longer possible to ignore typehint failures.
+
+* Parser errors now generate a ParseException (extends BaseException). Error
+  handling for eval()s on potentially invalid code should be changed to catch
+  ParseException in addition to the previous return value / error_get_last()
+  based handling.
+
+* Constructors of internal classes will now always throw an exception on
+  failure. Previously some constructors returned NULL or an unusable object.
+
+* The error level of some E_STRICT notices has been changed.
+
+Relevant RFCs:
+* https://wiki.php.net/rfc/engine_exceptions_for_php7
+* https://wiki.php.net/rfc/internal_constructor_behaviour
+* https://wiki.php.net/rfc/reclassify_e_strict
+
 Other language changes
 ----------------------
+
+* Removed support for static calls to non-static calls form an incompatible
+  $this context. In this case $this will not be defined, but the call will be
+  allowed with a deprecation notice. An example:
+
+      class A {
+          public function test() { var_dump($this); }
+      }
+
+      // Note: Does NOT extend A
+      class B {
+          public function callNonStaticMethodOfA() { A::test(); }
+      }
+      
+      (new B)->callNonStaticMethodOfA();
+
+      // Deprecated: Non-static method A::test() should not be called statically
+      // Notice: Undefined variable $this
+      NULL
+
+  Note that this only applies to calls from an incompatible context. If class B
+  extended from A the call would be allowed without any notices.
+
+* It is no longer possible to use the following class, interface and trait names
+  (case-insensitive):
+
+      bool
+      int
+      float
+      string
+      null
+      false
+      true
+
+  This applies to class/interface/trait declarations, class_alias() and use
+  statements.
+
+  Furthermore the following class, interface and trait names are now reserved
+  for future use, but do not yet throw an error when used:
+
+      resource
+      object
+      mixed
+      numeric
 
 * The yield language construct no longer requires parentheses when used in an
   expression context. It is now a right-associative operator with precedence
@@ -357,7 +431,8 @@ Standard library changes
   . call_user_method() and call_user_method_array() no longer exists.
   . ob_start() no longer issues an E_ERROR, but instead an E_RECOVERABLE_ERROR in case an 
     output buffer is created in an output buffer handler.
-  . Added hybrid sorting algo zend_sort for better performance.
+  . Improved zend_qsort(using hybrid sorting algo) for better performance,
+    and also renamed zend_qsort to zend_sort.
   . Added stable sorting algo zend_insert_sort.
   . Removed dl() function on fpm-fcgi.
 
@@ -379,6 +454,11 @@ Other
   . Requires libgmp version 4.2 or newer now.
   . gmp_setbit() and gmp_clrbit() now return FALSE for negative indices, making
     them consistent with other GMP functions.
+
+- Intl:
+  . Removed deprecated aliases datefmt_set_timezone_id() and
+    IntlDateFormatter::setTimeZoneID(). Use datefmt_set_timezone() and
+    IntlDateFormatter::setTimeZone() instead.
 
 - Mcrypt
   . Removed deprecated mcrypt_generic_end() alias in favor of
@@ -441,6 +521,8 @@ Other
   . define() now supports arrays as constant values, fixing an oversight where define() did not support arrays yet const syntax did.
   . Added the comparison operator (<=>), aka the spaceship operator.
     (RFC: https://wiki.php.net/rfc/combined-comparison-operator)
+  . Added the yield from operator for delegating Generators like coroutines.
+    (RFC: https://wiki.php.net/rfc/generator-delegation)
 
 - OpenSSL
   . Added "alpn_protocols" SSL context option allowing encrypted client/server
@@ -459,6 +541,11 @@ Other
 ========================================
 4. Deprecated Functionality
 ========================================
+
+- Core
+  . PHP 4 style constructors, where the constructor name is the same as the
+    class name, are now deprecated.
+  . Static calls to non-static methods are now deprecated.
 
 - OpenSSL
   . The "capture_session_meta" SSL context option is now deprecated. Meta
@@ -554,6 +641,9 @@ For more details see https://wiki.php.net/rfc/removal_of_dead_sapis_and_exts
   . For SSL support, the dependency on the openssl extension was abolished. Instead
     it depends alone on the openssl library. If it's presend at the compile time,
     ftp_ssl_connect() is enabled automatically.
+
+- odbc
+  . The odbc extension is always shipped shared
 
 ========================================
 13. Other Changes

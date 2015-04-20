@@ -80,7 +80,6 @@
 #include "zend_compile.h"
 #include "zend_execute.h"
 #include "zend_highlight.h"
-#include "zend_indent.h"
 #include "zend_extensions.h"
 #include "zend_ini.h"
 #include "zend_dtrace.h"
@@ -125,34 +124,6 @@ PHPAPI int (*php_register_internal_extensions_func)(void) = php_register_interna
 php_core_globals core_globals;
 #else
 PHPAPI int core_globals_id;
-#endif
-
-#ifdef PHP_WIN32
-#include "win32_internal_function_disabled.h"
-
-static int php_win32_disable_functions(void)
-{
-	int i;
-
-	if (EG(windows_version_info).dwMajorVersion < 5) {
-		for (i = 0; i < function_name_cnt_5; i++) {
-			if (zend_hash_str_del(CG(function_table), function_name_5[i], strlen(function_name_5[i]))==FAILURE) {
-				php_printf("Unable to disable function '%s'\n", function_name_5[i]);
-				return FAILURE;
-			}
-		}
-	}
-
-	if (EG(windows_version_info).dwMajorVersion < 6) {
-		for (i = 0; i < function_name_cnt_6; i++) {
-			if (zend_hash_str_del(CG(function_table), function_name_6[i], strlen(function_name_6[i]))==FAILURE) {
-				php_printf("Unable to disable function '%s'\n", function_name_6[i]);
-				return FAILURE;
-			}
-		}
-	}
-	return SUCCESS;
-}
 #endif
 
 #define SAFE_FILENAME(f) ((f)?(f):"-")
@@ -1975,7 +1946,7 @@ static int php_register_extensions_bc(zend_module_entry *ptr, int count)
 }
 /* }}} */
 
-#if defined(PHP_WIN32) && _MSC_VER >= 1400
+#ifdef PHP_WIN32
 static _invalid_parameter_handler old_invalid_parameter_handler;
 
 void dummy_invalid_parameter_handler(
@@ -2024,7 +1995,7 @@ int php_module_startup(sapi_module_struct *sf, zend_module_entry *additional_mod
 #endif
 #ifdef PHP_WIN32
 	php_os = "WINNT";
-#if _MSC_VER >= 1400
+
 	old_invalid_parameter_handler =
 		_set_invalid_parameter_handler(dummy_invalid_parameter_handler);
 	if (old_invalid_parameter_handler != NULL) {
@@ -2033,7 +2004,6 @@ int php_module_startup(sapi_module_struct *sf, zend_module_entry *additional_mod
 
 	/* Disable the message box for assertions.*/
 	_CrtSetReportMode(_CRT_ASSERT, 0);
-#endif
 #else
 	php_os = PHP_OS;
 #endif
@@ -2086,19 +2056,6 @@ int php_module_startup(sapi_module_struct *sf, zend_module_entry *additional_mod
 	zuf.getenv_function = sapi_getenv;
 	zuf.resolve_path_function = php_resolve_path_for_zend;
 	zend_startup(&zuf, NULL);
-
-#ifdef PHP_WIN32
-	{
-		OSVERSIONINFOEX *osvi = &EG(windows_version_info);
-
-		ZeroMemory(osvi, sizeof(OSVERSIONINFOEX));
-		osvi->dwOSVersionInfoSize = sizeof(OSVERSIONINFOEX);
-		if( !GetVersionEx((OSVERSIONINFO *) osvi)) {
-			php_printf("\nGetVersionEx unusable. %d\n", GetLastError());
-			return FAILURE;
-		}
-	}
-#endif
 
 #if HAVE_SETLOCALE
 	setlocale(LC_CTYPE, "");
@@ -2256,15 +2213,6 @@ int php_module_startup(sapi_module_struct *sf, zend_module_entry *additional_mod
 		module->info_func = PHP_MINFO(php_core);
 	}
 
-
-#ifdef PHP_WIN32
-	/* Disable incompatible functions for the running platform */
-	if (php_win32_disable_functions() == FAILURE) {
-		php_printf("Unable to disable unsupported functions\n");
-		return FAILURE;
-	}
-#endif
-
 	zend_post_startup();
 
 	module_initialized = 1;
@@ -2413,7 +2361,7 @@ void php_module_shutdown(void)
 	ts_free_id(core_globals_id);
 #endif
 
-#if defined(PHP_WIN32) && defined(_MSC_VER) && (_MSC_VER >= 1400)
+#ifdef PHP_WIN32
 	if (old_invalid_parameter_handler == NULL) {
 		_set_invalid_parameter_handler(old_invalid_parameter_handler);
 	}
@@ -2659,16 +2607,6 @@ PHPAPI int php_lint_script(zend_file_handle *file)
 	return retval;
 }
 /* }}} */
-
-#ifdef PHP_WIN32
-/* {{{ dummy_indent
-   just so that this symbol gets exported... */
-PHPAPI void dummy_indent(void)
-{
-	zend_indent();
-}
-/* }}} */
-#endif
 
 /*
  * Local variables:

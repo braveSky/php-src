@@ -27,6 +27,7 @@
 #include "zend_exceptions.h"
 #include "zend_extensions.h"
 #include "zend_closures.h"
+#include "zend_generators.h"
 
 #undef ZEND_TEST_EXCEPTIONS
 
@@ -1075,7 +1076,9 @@ static void add_class_vars(zend_class_entry *ce, int statics, zval *return_value
 		/* this is necessary to make it able to work with default array
 		 * properties, returned to user */
 		if (Z_OPT_CONSTANT_P(prop)) {
-			zval_update_constant(prop, 0);
+			if (UNEXPECTED(zval_update_constant_ex(prop, 0, NULL) != SUCCESS)) {
+				return;
+			}
 		}
 
 		zend_hash_add_new(Z_ARRVAL_P(return_value), key, prop);
@@ -1099,7 +1102,9 @@ ZEND_FUNCTION(get_class_vars)
 		RETURN_FALSE;
 	} else {
 		array_init(return_value);
-		zend_update_class_constants(ce);
+		if (UNEXPECTED(zend_update_class_constants(ce) != SUCCESS)) {
+			return;
+		}
 		add_class_vars(ce, 0, return_value);
 		add_class_vars(ce, 1, return_value);
 	}
@@ -1140,7 +1145,7 @@ ZEND_FUNCTION(get_object_vars)
 
 	if (!zobj->ce->default_properties_count && properties == zobj->properties) {
 		/* fast copy */
-		ZVAL_ARR(return_value, zend_array_dup(properties));
+		RETURN_ARR(zend_array_dup(properties));
 	} else {
 		array_init_size(return_value, zend_hash_num_elements(properties));
 
@@ -1281,16 +1286,14 @@ ZEND_FUNCTION(method_exists)
 		&& Z_OBJ_HT_P(klass)->get_method != NULL
 		&& (func = Z_OBJ_HT_P(klass)->get_method(&Z_OBJ_P(klass), method_name, NULL)) != NULL
 		) {
-			if (func->type == ZEND_INTERNAL_FUNCTION
-			&& (func->common.fn_flags & ZEND_ACC_CALL_VIA_HANDLER) != 0
-			) {
+			if (func->common.fn_flags & ZEND_ACC_CALL_VIA_TRAMPOLINE) {
 				/* Returns true to the fake Closure's __invoke */
 				RETVAL_BOOL(func->common.scope == zend_ce_closure
 					&& zend_string_equals_literal(method_name, ZEND_INVOKE_FUNC_NAME));
 
 				zend_string_release(lcname);
 				zend_string_release(func->common.function_name);
-				efree(func);
+				zend_free_trampoline(func);
 				return;
 			}
 			zend_string_release(lcname);
@@ -1698,6 +1701,10 @@ ZEND_FUNCTION(set_error_handler)
    Restores the previously defined error handler function */
 ZEND_FUNCTION(restore_error_handler)
 {
+	if (zend_parse_parameters_none() == FAILURE) {
+		return;
+	}
+
 	if (Z_TYPE(EG(user_error_handler)) != IS_UNDEF) {
 		zval zeh;
 
@@ -1760,6 +1767,10 @@ ZEND_FUNCTION(set_exception_handler)
    Restores the previously defined exception handler function */
 ZEND_FUNCTION(restore_exception_handler)
 {
+	if (zend_parse_parameters_none() == FAILURE) {
+		return;
+	}
+
 	if (Z_TYPE(EG(user_exception_handler)) != IS_UNDEF) {
 		zval_ptr_dtor(&EG(user_exception_handler));
 	}
@@ -1890,7 +1901,7 @@ ZEND_FUNCTION(get_defined_vars)
 {
 	zend_array *symbol_table = zend_rebuild_symbol_table();
 
-	ZVAL_ARR(return_value, zend_array_dup(symbol_table));
+	RETURN_ARR(zend_array_dup(symbol_table));
 }
 /* }}} */
 
@@ -1941,7 +1952,7 @@ ZEND_FUNCTION(create_function)
 
 		func = zend_hash_str_find_ptr(EG(function_table), LAMBDA_TEMP_FUNCNAME, sizeof(LAMBDA_TEMP_FUNCNAME)-1);
 		if (!func) {
-			zend_error(E_ERROR, "Unexpected inconsistency in create_function()");
+			zend_error_noreturn(E_CORE_ERROR, "Unexpected inconsistency in create_function()");
 			RETURN_FALSE;
 		}
 		if (func->refcount) {
@@ -2259,6 +2270,8 @@ ZEND_FUNCTION(debug_print_backtrace)
 		call_type = NULL;
 		ZVAL_UNDEF(&arg_array);
 
+		ptr = zend_generator_check_placeholder_frame(ptr);
+
 		skip = ptr;
 		/* skip internal handler */
 		if ((!skip->func || !ZEND_USER_CODE(skip->func->common.type)) &&
@@ -2457,6 +2470,8 @@ ZEND_API void zend_fetch_debug_backtrace(zval *return_value, int skip_last, int 
 		frameno++;
 		array_init(&stack_frame);
 
+		ptr = zend_generator_check_placeholder_frame(ptr);
+
 		skip = ptr;
 		/* skip internal handler */
 		if ((!skip->func || !ZEND_USER_CODE(skip->func->common.type)) &&
@@ -2496,8 +2511,7 @@ ZEND_API void zend_fetch_debug_backtrace(zval *return_value, int skip_last, int 
 				if (prev_call &&
 				    prev_call->func &&
 					!ZEND_USER_CODE(prev_call->func->common.type) &&
-					!(prev_call->func->common.type == ZEND_INTERNAL_FUNCTION &&
-						(prev_call->func->common.fn_flags & ZEND_ACC_CALL_VIA_HANDLER))) {
+					!(prev_call->func->common.fn_flags & ZEND_ACC_CALL_VIA_TRAMPOLINE)) {
 					break;
 				}
 				if (prev->func && ZEND_USER_CODE(prev->func->common.type)) {
