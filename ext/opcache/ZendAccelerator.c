@@ -2544,8 +2544,15 @@ static int accel_startup(zend_extension *extension)
 		zend_shared_alloc_unlock();
 
 		SHM_PROTECT();
+	} else if (!ZCG(accel_directives).permanent_cache) {
+		accel_startup_ok = 0;
+		zend_accel_error(ACCEL_LOG_FATAL, "opcache.permanent_only is set without a proper setting of opcache.permanent_cache");
+		return SUCCESS;
 	} else {
 		accel_shared_globals = calloc(1, sizeof(zend_accel_shared_globals));
+
+		/* using a dummy shared mm global to make things simpler */
+		smm_shared_globals = calloc(1, sizeof(zend_smm_shared_globals));
 
 		/* Init auto-global strings */
 		zend_accel_init_auto_globals();

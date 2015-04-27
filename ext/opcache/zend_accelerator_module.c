@@ -423,7 +423,7 @@ void zend_accel_info(ZEND_MODULE_INFO_FUNC_ARGS)
 	if (ZCG(enabled)) {
 		if (!accel_startup_ok || zps_api_failure_reason) {
 			php_info_print_table_row(2, "Startup Failed", zps_api_failure_reason);
-		} else {
+		} else if (!ZCG(accel_directives).permanent_only) {
 			char buf[32];
 			php_info_print_table_row(2, "Startup", "OK");
 			php_info_print_table_row(2, "Shared memory model", zend_accel_get_shared_model());
@@ -599,6 +599,8 @@ static ZEND_FUNCTION(opcache_get_status)
 		/* accelerated scripts */
 		if (accelerator_get_scripts(&scripts)) {
 			add_assoc_zval(return_value, "scripts", &scripts);
+		} else {
+			add_assoc_null(return_value, "scripts");
 		}
 	}
 }

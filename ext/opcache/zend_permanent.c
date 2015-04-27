@@ -587,7 +587,7 @@ int zend_permanent_script_store(zend_persistent_script *script)
 	char *filename;
 	zend_permanent_metainfo info;
 	struct iovec vec[3];
-	void *mem, *buf;
+	void *mem, *buf, *orig_mem;
 
 	len = strlen(ZCG(accel_directives).permanent_cache);
 	filename = emalloc(len + 33 + script->full_path->len + sizeof(SUFFIX));
@@ -618,6 +618,7 @@ int zend_permanent_script_store(zend_persistent_script *script)
 	mem = buf = emalloc(script->size);
 #endif
 
+	orig_mem = ZCG(mem);
 	ZCG(mem) = zend_string_alloc(4096 - (_STR_HEADER_SIZE + 1), 0);
 
 	zend_shared_alloc_init_xlat_table();
@@ -637,6 +638,7 @@ int zend_permanent_script_store(zend_persistent_script *script)
 	if (writev(fd, vec, 3) != (ssize_t)(sizeof(info) + script->size + info.str_size)) {
 		zend_accel_error(ACCEL_LOG_WARNING, "opcache cannot write to file '%s'\n", filename);
 		zend_string_release((zend_string*)ZCG(mem));
+		ZCG(mem) = orig_mem;
 		efree(mem);
 		unlink(filename);
 		efree(filename);
@@ -644,6 +646,7 @@ int zend_permanent_script_store(zend_persistent_script *script)
 	}
 
 	zend_string_release((zend_string*)ZCG(mem));
+	ZCG(mem) = orig_mem;
 	efree(mem);
 	close(fd);
 	efree(filename);
@@ -1050,12 +1053,12 @@ zend_persistent_script *zend_permanent_script_load(zend_file_handle *file_handle
 		return NULL;
 	}
 	len = strlen(ZCG(accel_directives).permanent_cache);
-	filename = emalloc(len + 33 + full_path->len + sizeof(SUFFIX));
+	filename = emalloc(len + sizeof(ZCG(system_id)) + full_path->len + sizeof(SUFFIX));
 	memcpy(filename, ZCG(accel_directives).permanent_cache, len);
 	filename[len] = '/';
-	memcpy(filename + len + 1, ZCG(system_id), 32);
-	memcpy(filename + len + 33, full_path->val, full_path->len);
-	memcpy(filename + len + 33 + full_path->len, SUFFIX, sizeof(SUFFIX));
+	memcpy(filename + len + 1, ZCG(system_id), sizeof(ZCG(system_id)));
+	memcpy(filename + len + 1 + sizeof(ZCG(system_id)), full_path->val, full_path->len);
+	memcpy(filename + len + 1 + sizeof(ZCG(system_id)) + full_path->len, SUFFIX, sizeof(SUFFIX));
 
 	fd = open(filename, O_RDONLY);
 	if (fd < 0) {
