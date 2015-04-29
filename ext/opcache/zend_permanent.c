@@ -64,6 +64,12 @@
 		} \
 	} while (0)
 
+#ifndef ZEND_WIN32
+/* name l_type l_whence l_start l_len */
+static FLOCK_STRUCTURE(mem_write_lock, F_WRLCK, SEEK_SET, 0, 1);
+static FLOCK_STRUCTURE(mem_write_unlock, F_UNLCK, SEEK_SET, 0, 1);
+#endif
+
 static const uint32_t uninitialized_bucket[-HT_MIN_MASK] =
 	{HT_INVALID_IDX, HT_INVALID_IDX};
 
@@ -610,6 +616,15 @@ int zend_permanent_script_store(zend_persistent_script *script)
 		return FAILURE;
 	}
 
+#ifndef ZEND_WIN32
+	if (fcntl(fd, F_SETLK, &mem_write_lock) == -1) {
+		efree(filename);
+		return FAILURE;
+	}
+#else
+	// windows supports
+#endif
+
 #ifdef __SSE2__
 	/* Align to 64-byte boundary */
 	mem = emalloc(script->size + 64);
@@ -638,12 +653,27 @@ int zend_permanent_script_store(zend_persistent_script *script)
 	if (writev(fd, vec, 3) != (ssize_t)(sizeof(info) + script->size + info.str_size)) {
 		zend_accel_error(ACCEL_LOG_WARNING, "opcache cannot write to file '%s'\n", filename);
 		zend_string_release((zend_string*)ZCG(mem));
+#ifndef ZEND_WIN32
+		if (fcntl(fd, F_SETLK, &mem_write_unlock) == -1) {
+			zend_accel_error(ACCEL_LOG_ERROR, "Cannot remove lock - %s (%d)", strerror(errno), errno);
+		}
+#else
+		//windows support?
+#endif
 		ZCG(mem) = orig_mem;
 		efree(mem);
 		unlink(filename);
 		efree(filename);
 		return FAILURE;
 	}
+
+#ifndef ZEND_WIN32
+	if (fcntl(fd, F_SETLK, &mem_write_unlock) == -1) {
+		zend_accel_error(ACCEL_LOG_ERROR, "Cannot remove lock - %s (%d)", strerror(errno), errno);
+	}
+#else
+	//windows support?
+#endif
 
 	zend_string_release((zend_string*)ZCG(mem));
 	ZCG(mem) = orig_mem;

@@ -2553,6 +2553,7 @@ static int accel_startup(zend_extension *extension)
 
 		/* using a dummy shared mm global to make things simpler */
 		smm_shared_globals = calloc(1, sizeof(zend_smm_shared_globals));
+		zend_accel_hash_init(&ZCSG(hash), ZCG(accel_directives).max_accelerated_files);
 
 		/* Init auto-global strings */
 		zend_accel_init_auto_globals();
@@ -2647,7 +2648,12 @@ void accel_shutdown(void)
 
 	if (!permanent_only) {
 		zend_shared_alloc_shutdown();
+	} else {
+		free(accel_shared_globals);
+		zend_hash_destroy(&ZCSG(hash));
+		free(smm_shared_globals);
 	}
+
 	zend_compile_file = accelerator_orig_compile_file;
 
 	if ((ini_entry = zend_hash_str_find_ptr(EG(ini_directives), "include_path", sizeof("include_path")-1)) != NULL) {
