@@ -1147,20 +1147,9 @@ static zend_persistent_script *cache_script_in_permanent_cache(zend_persistent_s
 	memory_used = zend_accel_script_persist_calc(new_persistent_script, NULL, 0);
 
 	/* Allocate memory block */
-	//TODO: it need to be deallocated at the end of request???
-#ifdef __SSE2__
-	/* Align to 64-byte boundary */
-	ZCG(mem) = emalloc(memory_used + 64);
-	ZCG(mem) = (void*)(((zend_uintptr_t)ZCG(mem) + 63L) & ~63L);
-#else
 	ZCG(mem) = emalloc(memory_used);
-#endif
-	if (!ZCG(mem)) {
-		zend_shared_alloc_destroy_xlat_table();
-		return new_persistent_script;
-	}
 
-	/* Copy into shared memory */
+	/* Copy into allocated memory */
 	new_persistent_script = zend_accel_script_persist(new_persistent_script, NULL, 0);
 
 	zend_shared_alloc_destroy_xlat_table();
@@ -1185,7 +1174,8 @@ static zend_persistent_script *cache_script_in_permanent_cache(zend_persistent_s
 
 	zend_permanent_script_store(new_persistent_script);
 
-	*from_shared_memory = 1;
+	*from_shared_memory = SCRIPT_FROM_PERMANENT_FILE;
+
 	return new_persistent_script;
 }
 
@@ -1475,7 +1465,7 @@ static zend_persistent_script *opcache_compile_file(zend_file_handle *file_handl
 
 	if (!op_array) {
 		/* compilation failed */
-		free_persistent_script(new_persistent_script, 1);
+		free_persistent_script(new_persistent_script, 2);
 		zend_accel_free_user_functions(&ZCG(function_table));
 		if (do_bailout) {
 			zend_bailout();
@@ -1570,13 +1560,13 @@ zend_op_array *permanent_compile_file(zend_file_handle *file_handle, int type)
 			zend_accel_set_auto_globals(persistent_script->ping_auto_globals_mask);
 		}
 
-		return zend_accel_load_script(persistent_script, 1);
+		return zend_accel_load_script(persistent_script, SCRIPT_FROM_PERMANENT_FILE);
 	}
 
 	persistent_script = opcache_compile_file(file_handle, type, NULL, 0, &op_array);
 
 	if (persistent_script) {
-		from_memory = 0;
+		from_memory = SCRIPT_FROM_MEMORY;
 		persistent_script = cache_script_in_permanent_cache(persistent_script, &from_memory);
 		return zend_accel_load_script(persistent_script, from_memory);
 	}

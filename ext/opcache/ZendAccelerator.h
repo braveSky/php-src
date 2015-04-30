@@ -38,6 +38,10 @@
 /* 8 - Standalone Open Source Zend OPcache */
 #define ACCELERATOR_API_NO 8
 
+#define SCRIPT_FROM_SHARED_MEMORY 	0
+#define SCRIPT_FROM_PERMANENT_FILE	1
+#define SCRIPT_FROM_MEMORY			2
+
 #if ZEND_WIN32
 # include "zend_config.w32.h"
 #else
