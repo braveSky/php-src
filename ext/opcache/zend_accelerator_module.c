@@ -332,12 +332,17 @@ static int accel_file_in_cache(INTERNAL_FUNCTION_PARAMETERS)
 {
 	zval zfilename;
 
+	if (!ZCG(enabled) || !accel_startup_ok || !ZCSG(accelerator_enabled)) {
+		return 0;
+	}
+
 	if (ZEND_NUM_ARGS() != 1 ||
 	    zend_get_parameters_array_ex(1, &zfilename) == FAILURE ||
 	    Z_TYPE(zfilename) != IS_STRING ||
 	    Z_STRLEN(zfilename) == 0) {
 		return 0;
 	}
+
 	return filename_is_in_cache(Z_STR(zfilename));
 }
 
