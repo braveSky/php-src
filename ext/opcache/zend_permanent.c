@@ -593,7 +593,7 @@ int zend_permanent_script_store(zend_persistent_script *script)
 	char *filename;
 	zend_permanent_metainfo info;
 	struct iovec vec[3];
-	void *buf;
+	void *mem, *buf, *orig_mem;
 
 	len = strlen(ZCG(accel_directives).permanent_cache);
 	filename = emalloc(len + 33 + script->full_path->len + sizeof(SUFFIX));
@@ -627,8 +627,15 @@ int zend_permanent_script_store(zend_persistent_script *script)
 	// windows supports
 #endif
 
-	buf = emalloc(script->size);
+#ifdef __SSE2__
+	/* Align to 64-byte boundary */
+	mem = emalloc(script->size + 64);
+	buf = (void*)(((zend_uintptr_t)mem + 63L) & ~63L);
+#else
+	mem = buf = emalloc(script->size);
+#endif
 
+	orig_mem = ZCG(mem);
 	ZCG(mem) = zend_string_alloc(4096 - (_STR_HEADER_SIZE + 1), 0);
 
 	zend_shared_alloc_init_xlat_table();
@@ -647,6 +654,7 @@ int zend_permanent_script_store(zend_persistent_script *script)
 
 	if (writev(fd, vec, 3) != (ssize_t)(sizeof(info) + script->size + info.str_size)) {
 		zend_accel_error(ACCEL_LOG_WARNING, "opcache cannot write to file '%s'\n", filename);
+		zend_string_release((zend_string*)ZCG(mem));
 #ifndef ZEND_WIN32
 		if (fcntl(fd, F_SETLK, &mem_write_unlock) == -1) {
 			zend_accel_error(ACCEL_LOG_ERROR, "Cannot remove lock - %s (%d)", strerror(errno), errno);
@@ -654,8 +662,8 @@ int zend_permanent_script_store(zend_persistent_script *script)
 #else
 		//windows support?
 #endif
-		zend_string_release((zend_string*)ZCG(mem));
-		efree(buf);
+		ZCG(mem) = orig_mem;
+		efree(mem);
 		unlink(filename);
 		efree(filename);
 		return FAILURE;
@@ -670,7 +678,8 @@ int zend_permanent_script_store(zend_persistent_script *script)
 #endif
 
 	zend_string_release((zend_string*)ZCG(mem));
-	efree(buf);
+	ZCG(mem) = orig_mem;
+	efree(mem);
 	close(fd);
 	efree(filename);
 
@@ -1069,14 +1078,14 @@ zend_persistent_script *zend_permanent_script_load(zend_file_handle *file_handle
 	zend_persistent_script *script;
 	zend_permanent_metainfo info;
 	zend_accel_hash_entry *bucket;
-	void *mem, *buf;
+	void *mem, *real_mem, *buf;
 	int cache_it = 1;
 
 	if (!full_path) {
 		return NULL;
 	}
 	len = strlen(ZCG(accel_directives).permanent_cache);
-	filename = emalloc(len + sizeof(ZCG(system_id)) + 1 + full_path->len + sizeof(SUFFIX));
+	filename = emalloc(len + sizeof(ZCG(system_id)) + full_path->len + sizeof(SUFFIX));
 	memcpy(filename, ZCG(accel_directives).permanent_cache, len);
 	filename[len] = '/';
 	memcpy(filename + len + 1, ZCG(system_id), sizeof(ZCG(system_id)));
@@ -1116,13 +1125,19 @@ zend_persistent_script *zend_permanent_script_load(zend_file_handle *file_handle
 		return NULL;
 	}
 
-	mem = emalloc(info.mem_size + info.str_size);
+#ifdef __SSE2__
+	/* Align to 64-byte boundary */
+	real_mem = emalloc(info.mem_size + info.str_size + 64);
+	mem = (void*)(((zend_uintptr_t)real_mem + 63L) & ~63L);
+#else
+	mem = real_mem = emalloc(info.mem_size + info.str_size);
+#endif
 
 	if (read(fd, mem, info.mem_size + info.str_size) != (ssize_t)(info.mem_size + info.str_size)) {
 		zend_accel_error(ACCEL_LOG_WARNING, "opcache cannot read from file '%s'\n", filename);
 		close(fd);
 		unlink(filename);
-		efree(mem);
+		efree(real_mem);
 		efree(filename);
 		return NULL;
 	}
@@ -1133,7 +1148,7 @@ zend_persistent_script *zend_permanent_script_load(zend_file_handle *file_handle
 	    zend_adler32(ADLER32_INIT, mem, info.mem_size + info.str_size) != info.checksum) {
 		zend_accel_error(ACCEL_LOG_WARNING, "corrupted file '%s'\n", filename);
 		unlink(filename);
-		efree(mem);
+		efree(real_mem);
 		efree(filename);
 		return NULL;
 	}
@@ -1150,7 +1165,7 @@ zend_persistent_script *zend_permanent_script_load(zend_file_handle *file_handle
 			script = (zend_persistent_script *)bucket->data;
 			if (!script->corrupted) {
 				zend_shared_alloc_unlock();
-				efree(mem);
+				efree(real_mem);
 				efree(filename);
 				return script;
 			}
@@ -1180,6 +1195,7 @@ zend_persistent_script *zend_permanent_script_load(zend_file_handle *file_handle
 		memcpy(buf, mem, info.mem_size);
 	} else {
 use_process_mem:
+		//TODO: it need to be deallocated at the end of request???
 		buf = mem;
 		cache_it = 0;
 	}
@@ -1194,7 +1210,7 @@ use_process_mem:
 		zend_accel_hash_update(&ZCSG(hash), script->full_path->val, script->full_path->len, 0, script);
 
 		zend_shared_alloc_unlock();
-		efree(mem);
+		efree(real_mem);
 	}
 	efree(filename);
 
