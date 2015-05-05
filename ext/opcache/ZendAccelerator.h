@@ -157,7 +157,7 @@ typedef struct _zend_persistent_script {
 	zend_op_array  main_op_array;
 	HashTable      function_table;
 	HashTable      class_table;
-	zend_long           compiler_halt_offset;   /* position of __HALT_COMPILER or -1 */
+	zend_long      compiler_halt_offset;   /* position of __HALT_COMPILER or -1 */
 	int            ping_auto_globals_mask; /* which autoglobals are used by the script */
 	accel_time_t   timestamp;              /* the script modification time */
 	zend_bool      corrupted;
@@ -174,9 +174,9 @@ typedef struct _zend_persistent_script {
 	struct zend_persistent_script_dynamic_members {
 		time_t       last_used;
 #ifdef ZEND_WIN32
-		LONGLONG   hits;
+		LONGLONG     hits;
 #else
-		zend_ulong        hits;
+		zend_ulong   hits;
 #endif
 		unsigned int memory_consumption;
 		unsigned int checksum;
@@ -185,12 +185,12 @@ typedef struct _zend_persistent_script {
 } zend_persistent_script;
 
 typedef struct _zend_accel_directives {
-	zend_long           memory_consumption;
-	zend_long           max_accelerated_files;
+	zend_long      memory_consumption;
+	zend_long      max_accelerated_files;
 	double         max_wasted_percentage;
 	char          *user_blacklist_filename;
-	zend_long           consistency_checks;
-	zend_long           force_restart_timeout;
+	zend_long      consistency_checks;
+	zend_long      force_restart_timeout;
 	zend_bool      use_cwd;
 	zend_bool      ignore_dups;
 	zend_bool      validate_timestamps;
@@ -202,18 +202,17 @@ typedef struct _zend_accel_directives {
 	zend_bool      file_override_enabled;
 	zend_bool      inherited_hack;
 	zend_bool      enable_cli;
-	zend_ulong  revalidate_freq;
-	zend_ulong  file_update_protection;
+	zend_ulong     revalidate_freq;
+	zend_ulong     file_update_protection;
 	char          *error_log;
 #ifdef ZEND_WIN32
 	char          *mmap_base;
 #endif
 	char          *memory_model;
-	zend_long           log_verbosity_level;
-
-	zend_long           optimization_level;
-	zend_long           max_file_size;
-	zend_long           interned_strings_buffer;
+	zend_long      log_verbosity_level;
+	zend_long      optimization_level;
+	zend_long      max_file_size;
+	zend_long      interned_strings_buffer;
 	char          *restrict_api;
 	char          *permanent_cache;
 	zend_bool      permanent_only;
@@ -257,12 +256,12 @@ typedef struct _zend_accel_globals {
 
 typedef struct _zend_accel_shared_globals {
 	/* Cache Data Structures */
-	zend_ulong   hits;
-	zend_ulong   misses;
-	zend_ulong   blacklist_misses;
-	zend_ulong   oom_restarts;     /* number of restarts because of out of memory */
-	zend_ulong   hash_restarts;    /* number of restarts because of hash overflow */
-	zend_ulong   manual_restarts;  /* number of restarts scheduled by opcache_reset() */
+	zend_ulong      hits;
+	zend_ulong      misses;
+	zend_ulong      blacklist_misses;
+	zend_ulong      oom_restarts;     /* number of restarts because of out of memory */
+	zend_ulong      hash_restarts;    /* number of restarts because of hash overflow */
+	zend_ulong      manual_restarts;  /* number of restarts scheduled by opcache_reset() */
 	zend_accel_hash hash;             /* hash table for cached scripts */
 
 	/* Directives & Maintenance */
@@ -274,8 +273,8 @@ typedef struct _zend_accel_shared_globals {
 	zend_accel_restart_reason restart_reason;
 	zend_bool       cache_status_before_restart;
 #ifdef ZEND_WIN32
-	LONGLONG   mem_usage;
-	LONGLONG   restart_in;
+	LONGLONG        mem_usage;
+	LONGLONG        restart_in;
 #endif
 	zend_bool       restart_in_progress;
 	/* Interned Strings Support */
