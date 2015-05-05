@@ -1146,19 +1146,7 @@ static zend_persistent_script *cache_script_in_permanent_cache(zend_persistent_s
 	/* Calculate the required memory size */
 	memory_used = zend_accel_script_persist_calc(new_persistent_script, NULL, 0);
 
-	/* Allocate memory block */
-	//TODO: it need to be deallocated at the end of request???
-#ifdef __SSE2__
-	/* Align to 64-byte boundary */
-	ZCG(mem) = emalloc(memory_used + 64);
-	ZCG(mem) = (void*)(((zend_uintptr_t)ZCG(mem) + 63L) & ~63L);
-#else
 	ZCG(mem) = emalloc(memory_used);
-#endif
-	if (!ZCG(mem)) {
-		zend_shared_alloc_destroy_xlat_table();
-		return new_persistent_script;
-	}
 
 	/* Copy into shared memory */
 	new_persistent_script = zend_accel_script_persist(new_persistent_script, NULL, 0);
@@ -1184,6 +1172,7 @@ static zend_persistent_script *cache_script_in_permanent_cache(zend_persistent_s
 	new_persistent_script->dynamic_members.checksum = zend_accel_script_checksum(new_persistent_script);
 
 	zend_permanent_script_store(new_persistent_script);
+	zend_hash_add_new_ptr(&ZCG(permanent_hash), new_persistent_script->full_path, new_persistent_script);
 
 	*from_shared_memory = 1;
 	return new_persistent_script;
@@ -2273,6 +2262,9 @@ static void accel_deactivate(void)
 		ZCG(cwd) = NULL;
 	}
 
+	if (ZCG(accel_directives).permanent_cache) {
+		zend_hash_clean(&ZCG(permanent_hash));
+	}
 }
 
 static int accelerator_remove_cb(zend_extension *element1, zend_extension *element2)
@@ -2455,6 +2447,31 @@ static void accel_gen_system_id(void)
 	}
 }
 
+static void accel_free_permanent_script(zval *zv)
+{
+	zend_string *name;
+	zend_function *func;
+	zend_class_entry *ce;
+	zend_persistent_script *persistent_script = (zend_persistent_script *)Z_PTR_P(zv);
+
+	ZEND_HASH_FOREACH_STR_KEY_PTR(&persistent_script->function_table, name, func) {
+		zend_hash_del(EG(function_table), name);
+	} ZEND_HASH_FOREACH_END();
+
+	ZEND_HASH_FOREACH_STR_KEY_PTR(&persistent_script->class_table, name, ce) {
+		zend_hash_del(EG(class_table), name);
+	} ZEND_HASH_FOREACH_END();
+
+#if !ZEND_DEBUG
+	if (ZCG(accel_directives).fast_shutdown) {
+		zend_hash_do_resize(EG(function_table));
+		zend_hash_do_resize(EG(class_table));
+	}
+#endif
+
+	efree(persistent_script);
+}
+
 static int accel_startup(zend_extension *extension)
 {
 	zend_function *func;
@@ -2556,6 +2573,8 @@ static int accel_startup(zend_extension *extension)
 
 		/* Init auto-global strings */
 		zend_accel_init_auto_globals();
+		zend_hash_init(&ZCG(permanent_hash),
+				ZCG(accel_directives).max_accelerated_files, NULL, accel_free_permanent_script, 1);
 	}
 
 	/* Override compiler */
@@ -2617,7 +2636,6 @@ static void accel_free_ts_resources()
 void accel_shutdown(void)
 {
 	zend_ini_entry *ini_entry;
-	zend_bool permanent_only;
 
 	zend_accel_blacklist_shutdown(&accel_blacklist);
 
@@ -2641,11 +2659,13 @@ void accel_shutdown(void)
 	zend_interned_strings_snapshot = orig_interned_strings_snapshot;
 	zend_interned_strings_restore = orig_interned_strings_restore;
 
-	permanent_only = ZCG(accel_directives).permanent_only;
-
 	accel_free_ts_resources();
 
-	if (!permanent_only) {
+	if (ZCG(accel_directives).permanent_cache) {
+		zend_hash_destroy(&ZCG(permanent_hash));
+	}
+
+	if (!ZCG(accel_directives).permanent_only) {
 		zend_shared_alloc_shutdown();
 	} else {
 		free(accel_shared_globals);

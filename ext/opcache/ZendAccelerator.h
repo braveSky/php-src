@@ -224,10 +224,11 @@ typedef struct _zend_accel_globals {
     /* initially it contains only internal functions */
 	HashTable               function_table;
 	int                     internal_functions_count;
-	int                     counted;   /* the process uses shared memory */
+	int                     counted;              /* the process uses shared memory */
 	zend_bool               enabled;
-	zend_bool               locked;    /* thread obtained exclusive lock */
-	HashTable               bind_hash; /* prototype and zval lookup table */
+	zend_bool               locked;               /* thread obtained exclusive lock */
+	HashTable               bind_hash;            /* prototype and zval lookup table */
+	HashTable               permanent_hash;       /* loaded permanent sripts */
 	zend_accel_directives   accel_directives;
 	zend_string            *cwd;                  /* current working directory or NULL */
 	zend_string            *include_path;         /* current value of "include_path" directive */

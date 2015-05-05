@@ -78,7 +78,6 @@ typedef struct _zend_permanent_metainfo {
 	char         system_id[32];
 	size_t       mem_size;
 	size_t       str_size;
-	size_t       script_offset;
 	accel_time_t timestamp;
 	uint32_t     checksum;
 } zend_permanent_metainfo;
@@ -570,12 +569,11 @@ static void zend_permanent_serialize(zend_persistent_script  *script,
 	memcpy(info->system_id, ZCG(system_id), 32);
 	info->mem_size = script->size;
 	info->str_size = 0;
-	info->script_offset = (char*)script - (char*)script->mem;
 	info->timestamp = script->timestamp;
 
 	memcpy(buf, script->mem, script->size);
 
-	new_script = (zend_persistent_script*)((char*)buf + info->script_offset);
+	new_script = (zend_persistent_script*)buf;
 	SERIALIZE_PTR(new_script->full_path);
 
 	zend_permanent_serialize_hash(&new_script->class_table, script, info, buf, zend_permanent_serialize_class);
@@ -593,7 +591,7 @@ int zend_permanent_script_store(zend_persistent_script *script)
 	char *filename;
 	zend_permanent_metainfo info;
 	struct iovec vec[3];
-	void *mem, *buf, *orig_mem;
+	void *buf;
 
 	len = strlen(ZCG(accel_directives).permanent_cache);
 	filename = emalloc(len + 33 + script->full_path->len + sizeof(SUFFIX));
@@ -627,15 +625,8 @@ int zend_permanent_script_store(zend_persistent_script *script)
 	// windows supports
 #endif
 
-#ifdef __SSE2__
-	/* Align to 64-byte boundary */
-	mem = emalloc(script->size + 64);
-	buf = (void*)(((zend_uintptr_t)mem + 63L) & ~63L);
-#else
-	mem = buf = emalloc(script->size);
-#endif
+	buf = emalloc(script->size);
 
-	orig_mem = ZCG(mem);
 	ZCG(mem) = zend_string_alloc(4096 - (_STR_HEADER_SIZE + 1), 0);
 
 	zend_shared_alloc_init_xlat_table();
@@ -662,8 +653,7 @@ int zend_permanent_script_store(zend_persistent_script *script)
 #else
 		//windows support?
 #endif
-		ZCG(mem) = orig_mem;
-		efree(mem);
+		efree(buf);
 		unlink(filename);
 		efree(filename);
 		return FAILURE;
@@ -678,8 +668,7 @@ int zend_permanent_script_store(zend_persistent_script *script)
 #endif
 
 	zend_string_release((zend_string*)ZCG(mem));
-	ZCG(mem) = orig_mem;
-	efree(mem);
+	efree(buf);
 	close(fd);
 	efree(filename);
 
@@ -1078,14 +1067,14 @@ zend_persistent_script *zend_permanent_script_load(zend_file_handle *file_handle
 	zend_persistent_script *script;
 	zend_permanent_metainfo info;
 	zend_accel_hash_entry *bucket;
-	void *mem, *real_mem, *buf;
+	void *mem, *buf;
 	int cache_it = 1;
 
 	if (!full_path) {
 		return NULL;
 	}
 	len = strlen(ZCG(accel_directives).permanent_cache);
-	filename = emalloc(len + sizeof(ZCG(system_id)) + full_path->len + sizeof(SUFFIX));
+	filename = emalloc(len + sizeof(ZCG(system_id)) + full_path->len + 1 + sizeof(SUFFIX));
 	memcpy(filename, ZCG(accel_directives).permanent_cache, len);
 	filename[len] = '/';
 	memcpy(filename + len + 1, ZCG(system_id), sizeof(ZCG(system_id)));
@@ -1125,19 +1114,13 @@ zend_persistent_script *zend_permanent_script_load(zend_file_handle *file_handle
 		return NULL;
 	}
 
-#ifdef __SSE2__
-	/* Align to 64-byte boundary */
-	real_mem = emalloc(info.mem_size + info.str_size + 64);
-	mem = (void*)(((zend_uintptr_t)real_mem + 63L) & ~63L);
-#else
-	mem = real_mem = emalloc(info.mem_size + info.str_size);
-#endif
+	mem = emalloc(info.mem_size + info.str_size);
 
 	if (read(fd, mem, info.mem_size + info.str_size) != (ssize_t)(info.mem_size + info.str_size)) {
 		zend_accel_error(ACCEL_LOG_WARNING, "opcache cannot read from file '%s'\n", filename);
 		close(fd);
 		unlink(filename);
-		efree(real_mem);
+		efree(mem);
 		efree(filename);
 		return NULL;
 	}
@@ -1148,7 +1131,7 @@ zend_persistent_script *zend_permanent_script_load(zend_file_handle *file_handle
 	    zend_adler32(ADLER32_INIT, mem, info.mem_size + info.str_size) != info.checksum) {
 		zend_accel_error(ACCEL_LOG_WARNING, "corrupted file '%s'\n", filename);
 		unlink(filename);
-		efree(real_mem);
+		efree(mem);
 		efree(filename);
 		return NULL;
 	}
@@ -1165,7 +1148,7 @@ zend_persistent_script *zend_permanent_script_load(zend_file_handle *file_handle
 			script = (zend_persistent_script *)bucket->data;
 			if (!script->corrupted) {
 				zend_shared_alloc_unlock();
-				efree(real_mem);
+				efree(mem);
 				efree(filename);
 				return script;
 			}
@@ -1195,13 +1178,12 @@ zend_persistent_script *zend_permanent_script_load(zend_file_handle *file_handle
 		memcpy(buf, mem, info.mem_size);
 	} else {
 use_process_mem:
-		//TODO: it need to be deallocated at the end of request???
 		buf = mem;
 		cache_it = 0;
 	}
 
 	ZCG(mem) = ((char*)mem + info.mem_size);
-	script = (zend_persistent_script*)((char*)buf + info.script_offset);
+	script = (zend_persistent_script*)buf;
 	zend_permanent_unserialize(script, buf);
 
 	if (cache_it) {
@@ -1210,7 +1192,9 @@ use_process_mem:
 		zend_accel_hash_update(&ZCSG(hash), script->full_path->val, script->full_path->len, 0, script);
 
 		zend_shared_alloc_unlock();
-		efree(real_mem);
+		efree(mem);
+	} else {
+		zend_hash_add_new_ptr(&ZCG(permanent_hash), script->full_path, script);
 	}
 	efree(filename);
 
