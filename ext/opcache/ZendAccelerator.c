@@ -1588,7 +1588,9 @@ zend_op_array *persistent_compile_file(zend_file_handle *file_handle, int type)
 		return permanent_compile_file(file_handle, type);
 	} else if ((!ZCG(counted) && !ZCSG(accelerator_enabled)) ||
 	           (ZCSG(restart_in_progress) && accel_restart_is_active())) {
-		if (ZCG(accel_directives).permanent_cache) {
+		if (ZCG(accel_directives).permanent_cache &&
+				(!is_stream_path(file_handle->filename) ||
+				 is_cacheable_stream_path(file_handle->filename))) {
 			return permanent_compile_file(file_handle, type);
 		} else {
 			return accelerator_orig_compile_file(file_handle, type);
