@@ -652,7 +652,7 @@ zend_op_array *compile_filename(int type, zval *filename)
 			file_handle.opened_path = opened_path = zend_string_copy(Z_STR_P(filename));
 		}
 
-		zend_hash_add_empty_element(&EG(included_files), file_handle.opened_path);
+		zend_hash_add_ptr(&EG(included_files), file_handle.opened_path, retval);
 
 		if (opened_path) {
 			zend_string_release(opened_path);
@@ -660,7 +660,7 @@ zend_op_array *compile_filename(int type, zval *filename)
 	}
 	zend_destroy_file_handle(&file_handle);
 
-	if (filename==&tmp) {
+	if (filename == &tmp) {
 		zval_dtor(&tmp);
 	}
 	return retval;
@@ -735,10 +735,10 @@ ZEND_API size_t zend_get_scanned_file_offset(void)
 }
 
 
-zend_op_array *compile_string(zval *source_string, char *filename)
+zend_script *compile_string(zval *source_string, char *filename)
 {
 	zend_lex_state original_lex_state;
-	zend_op_array *op_array = NULL;
+	zend_script *script = NULL;
 	zval tmp;
 	zend_bool original_in_compilation = CG(in_compilation);
 
@@ -7435,7 +7435,7 @@ yy803:
 yy804:
 		YYDEBUG(804, *YYCURSOR);
 		yyleng = YYCURSOR - SCNG(yy_text);
-#line 1882 "Zend/zend_language_scanner.l"
+#line 1881 "Zend/zend_language_scanner.l"
 		{
 	/* Only '[' can be valid, but returning other tokens will allow a more explicit parse error */
 	RETURN_TOKEN(yytext[0]);

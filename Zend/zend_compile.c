@@ -67,8 +67,8 @@ static inline void zend_alloc_polymorphic_cache_slot(uint32_t literal) {
 	op_array->cache_size += POLYMORPHIC_CACHE_SLOT_SIZE * sizeof(void*);
 }
 
-ZEND_API zend_op_array *(*zend_compile_file)(zend_file_handle *file_handle, int type);
-ZEND_API zend_op_array *(*zend_compile_string)(zval *source_string, char *filename);
+ZEND_API zend_script *(*zend_compile_file)(zend_file_handle *file_handle, int type);
+ZEND_API zend_script *(*zend_compile_string)(zval *source_string, char *filename);
 
 #ifndef ZTS
 ZEND_API zend_compiler_globals compiler_globals;
