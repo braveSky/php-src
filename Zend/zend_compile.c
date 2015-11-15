@@ -22,6 +22,7 @@
 
 #include <zend_language_parser.h>
 #include "zend.h"
+#include "zend_script.h"
 #include "zend_compile.h"
 #include "zend_constants.h"
 #include "zend_llist.h"

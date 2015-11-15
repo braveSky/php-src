@@ -21,8 +21,6 @@
 #ifndef ZEND_SCRIPT_H
 #define ZEND_SCRIPT_H
 
-#include "zend.h"
-
 typedef struct _zend_script {
 	zend_string   *filename;
 	zend_op_array  main_op_array;

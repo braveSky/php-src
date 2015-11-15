@@ -720,9 +720,9 @@ ZEND_API void function_add_ref(zend_function *function);
 
 
 /* helper functions in zend_language_scanner.l */
-ZEND_API zend_op_array *compile_file(zend_file_handle *file_handle, int type);
-ZEND_API zend_op_array *compile_string(zval *source_string, char *filename);
-ZEND_API zend_op_array *compile_filename(int type, zval *filename);
+ZEND_API zend_script *compile_file(zend_file_handle *file_handle, int type);
+ZEND_API zend_script *compile_string(zval *source_string, char *filename);
+ZEND_API zend_script *compile_filename(int type, zval *filename);
 ZEND_API int zend_execute_scripts(int type, zval *retval, int file_count, ...);
 ZEND_API int open_file_for_scanning(zend_file_handle *file_handle);
 ZEND_API void init_op_array(zend_op_array *op_array, zend_uchar type, int initial_ops_size);
