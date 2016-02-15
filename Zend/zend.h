@@ -58,10 +58,7 @@
 #define INTERNAL_FUNCTION_PARAMETERS zend_execute_data *execute_data, zval *return_value
 #define INTERNAL_FUNCTION_PARAM_PASSTHRU execute_data, return_value
 
-#define USED_RET() \
-	(!EX(prev_execute_data) || \
-	 !ZEND_USER_CODE(EX(prev_execute_data)->func->common.type) || \
-	 (EX(prev_execute_data)->opline->result_type != IS_UNUSED))
+#define USED_RET() (EXPECTED(return_value != NULL))
 
 #ifdef ZEND_ENABLE_STATIC_TSRMLS_CACHE
 #define ZEND_TSRMG TSRMG_STATIC

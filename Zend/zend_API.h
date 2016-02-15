@@ -609,23 +609,120 @@ END_EXTERN_C()
 		}										\
 	} while (0)
 
-#define RETVAL_BOOL(b)					ZVAL_BOOL(return_value, b)
-#define RETVAL_NULL() 					ZVAL_NULL(return_value)
-#define RETVAL_LONG(l) 					ZVAL_LONG(return_value, l)
-#define RETVAL_DOUBLE(d) 				ZVAL_DOUBLE(return_value, d)
-#define RETVAL_STR(s)			 		ZVAL_STR(return_value, s)
-#define RETVAL_INTERNED_STR(s)	 		ZVAL_INTERNED_STR(return_value, s)
-#define RETVAL_NEW_STR(s)		 		ZVAL_NEW_STR(return_value, s)
-#define RETVAL_STR_COPY(s)		 		ZVAL_STR_COPY(return_value, s)
-#define RETVAL_STRING(s)		 		ZVAL_STRING(return_value, s)
-#define RETVAL_STRINGL(s, l)		 	ZVAL_STRINGL(return_value, s, l)
-#define RETVAL_EMPTY_STRING() 			ZVAL_EMPTY_STRING(return_value)
-#define RETVAL_RES(r)			 		ZVAL_RES(return_value, r)
-#define RETVAL_ARR(r)			 		ZVAL_ARR(return_value, r)
-#define RETVAL_OBJ(r)			 		ZVAL_OBJ(return_value, r)
-#define RETVAL_ZVAL(zv, copy, dtor)		ZVAL_ZVAL(return_value, zv, copy, dtor)
-#define RETVAL_FALSE  					ZVAL_FALSE(return_value)
-#define RETVAL_TRUE   					ZVAL_TRUE(return_value)
+#define RETVAL_BOOL(b) do {						\
+		if (EXPECTED(return_value)) {			\
+			ZVAL_BOOL(return_value, b);			\
+		}										\
+	} while (0)
+
+#define RETVAL_NULL() do {						\
+		if (EXPECTED(return_value)) {			\
+			ZVAL_NULL(return_value);			\
+		}										\
+	} while (0)
+
+#define RETVAL_LONG(l) do {						\
+		if (EXPECTED(return_value)) {			\
+			ZVAL_LONG(return_value, l);			\
+		}										\
+	} while (0)
+
+#define RETVAL_DOUBLE(d) do {					\
+		if (EXPECTED(return_value)) {			\
+			ZVAL_DOUBLE(return_value, d);		\
+		}										\
+	} while (0)
+
+#define RETVAL_STR(s) do {						\
+		if (EXPECTED(return_value)) {			\
+			ZVAL_STR(return_value, s);			\
+		} else {								\
+			zend_string_release(s);				\
+		}										\
+	} while (0)
+
+#define RETVAL_INTERNED_STR(s) do {				\
+		if (EXPECTED(return_value)) {			\
+			ZVAL_INTERNED_STR(return_value, s);	\
+		}										\
+	} while (0)
+
+#define RETVAL_NEW_STR(s) do {					\
+		if (EXPECTED(return_value)) {			\
+			ZVAL_NEW_STR(return_value, s);		\
+		} else {								\
+			zend_string_release(s);				\
+		}										\
+	} while (0)
+
+#define RETVAL_STR_COPY(s) do {					\
+		if (EXPECTED(return_value)) {			\
+			ZVAL_STR_COPY(return_value, s);		\
+		}										\
+	} while (0)
+
+#define RETVAL_STRING(s) do {					\
+		if (EXPECTED(return_value)) {			\
+			ZVAL_STRING(return_value, s);		\
+		}										\
+	} while (0)
+
+#define RETVAL_STRINGL(s, l) do {				\
+		if (EXPECTED(return_value)) {			\
+			ZVAL_STRINGL(return_value, s, l);	\
+		}										\
+	} while (0)
+
+#define RETVAL_EMPTY_STRING() do {				\
+		if (EXPECTED(return_value)) {			\
+			ZVAL_EMPTY_STRING(return_value);	\
+		}										\
+	} while (0)
+
+#define RETVAL_RES(r) do {						\
+		if (EXPECTED(return_value)) {			\
+			ZVAL_RES(return_value, r);			\
+		} else {								\
+			zend_list_delete(r);				\
+		}										\
+	} while (0)
+
+#define RETVAL_ARR(r) do {						\
+		if (EXPECTED(return_value)) {			\
+			ZVAL_ARR(return_value, r);			\
+		} else if ((--GC_REFCOUNT(r)) == 0) {	\
+			zend_array_destroy(r);				\
+		}										\
+	} while (0)
+
+#define RETVAL_OBJ(o) do {						\
+		if (EXPECTED(return_value)) {			\
+			ZVAL_OBJ(return_value, o);			\
+		} else {								\
+			OBJ_RELEASE(o);						\
+		}										\
+	} while (0)
+
+#define RETVAL_FALSE do {						\
+		if (EXPECTED(return_value)) {			\
+			ZVAL_FALSE(return_value);			\
+		}										\
+	} while (0)
+
+#define RETVAL_TRUE do {						\
+		if (EXPECTED(return_value)) {			\
+			ZVAL_TRUE(return_value);			\
+		}										\
+	} while (0)
+
+#define RETVAL_ZVAL(zv, copy, dtor)	do {		\
+		if (EXPECTED(return_value)) {			\
+			ZVAL_ZVAL(return_value,				\
+					zv, copy, dtor);			\
+		} else if (dtor || !copy) {				\
+				zval_ptr_dtor(zv);				\
+		}										\
+	} while(0)
 
 #define RETURN_BOOL(b) 					{ RETVAL_BOOL(b); return; }
 #define RETURN_NULL() 					{ RETVAL_NULL(); return;}
