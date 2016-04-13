@@ -460,9 +460,35 @@ int emu(const opcode_handler_t *ip, void *fp) {
     ZEND_GCC_GLOBAL_REGS=no
   ])
 fi
+
+ZEND_VM_SIBLING_CALL_OPT=no
 if test "$ZEND_GCC_GLOBAL_REGS" = "yes"; then
   AC_DEFINE([HAVE_GCC_GLOBAL_REGS], 1, [Define if the target system has support for global register variables])
 else
   HAVE_GCC_GLOBAL_REGS=no
 fi
 AC_MSG_RESULT($ZEND_GCC_GLOBAL_REGS)
+
+AC_MSG_CHECKING(for zend vm sibling call opt)
+if test "$ZEND_GCC_GLOBAL_REGS" = "yes"; then
+  AC_TRY_COMPILE([
+#if defined(__GNUC__)
+# define ZEND_GCC_VERSION (__GNUC__ * 1000 + __GNUC_MINOR__)
+#else
+# define ZEND_GCC_VERSION 0
+#endif
+#if defined(__GNUC__) && ZEND_GCC_VERSION >= 4008 && defined(__x86_64__)
+# define ZEND_VM_FP_GLOBAL_REG "%r14"
+# define ZEND_VM_IP_GLOBAL_REG "%r15"
+#else
+# error "only support x86_64 now"
+#endif
+  ], [
+  ], [
+    ZEND_VM_SIBLING_CALL_OPT=yes
+  ], [
+    ZEND_VM_SIBLING_CALL_OPT=no
+  ])
+fi
+PHP_SUBST(ZEND_VM_SIBLING_CALL_OPT)
+AC_MSG_RESULT($ZEND_VM_SIBLING_CALL_OPT)
