@@ -126,7 +126,6 @@ static PHP_MINIT_FUNCTION(phpdbg) /* {{{ */
 	ZEND_INIT_MODULE_GLOBALS(phpdbg, php_phpdbg_globals_ctor, NULL);
 	REGISTER_INI_ENTRIES();
 
-	zend_execute_ex = phpdbg_execute_ex;
 
 	REGISTER_STRINGL_CONSTANT("PHPDBG_VERSION", PHPDBG_VERSION, sizeof(PHPDBG_VERSION)-1, CONST_CS|CONST_PERSISTENT);
 
@@ -206,6 +205,9 @@ static PHP_RINIT_FUNCTION(phpdbg) /* {{{ */
 
 	zend_hash_init(&PHPDBG_G(seek), 8, NULL, NULL, 0);
 	zend_hash_init(&PHPDBG_G(registered), 8, NULL, php_phpdbg_destroy_registered, 0);
+	
+	zend_execute_ex = phpdbg_execute_ex;
+	PHPDBG_G(orig_hoook) = zend_set_fcall_hook(phpdbg_fcall_hook);
 
 	return SUCCESS;
 } /* }}} */

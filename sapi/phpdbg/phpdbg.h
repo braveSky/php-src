@@ -317,6 +317,7 @@ ZEND_BEGIN_MODULE_GLOBALS(phpdbg)
 	struct win32_sigio_watcher_data swd;
 #endif
 	long lines;                                  /* max number of lines to display */
+	zend_fcall_hook *orig_hook;
 ZEND_END_MODULE_GLOBALS(phpdbg) /* }}} */
 
 #endif

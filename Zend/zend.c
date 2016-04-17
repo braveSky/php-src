@@ -679,12 +679,10 @@ int zend_startup(zend_utility_functions *utility_functions, char **extensions) /
 #if HAVE_DTRACE
 /* build with dtrace support */
 	zend_compile_file = dtrace_compile_file;
-	zend_execute_ex = dtrace_execute_ex;
-	zend_execute_internal = dtrace_execute_internal;
+	//zend_execute_ex = dtrace_execute_ex;
+	//zend_execute_internal = dtrace_execute_internal;
 #else
 	zend_compile_file = compile_file;
-	zend_execute_ex = execute_ex;
-	zend_execute_internal = NULL;
 #endif /* HAVE_SYS_SDT_H */
 	zend_compile_string = compile_string;
 	zend_throw_exception_hook = NULL;

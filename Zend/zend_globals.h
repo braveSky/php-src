@@ -65,7 +65,7 @@ END_EXTERN_C()
 
 typedef struct _zend_vm_stack *zend_vm_stack;
 typedef struct _zend_ini_entry zend_ini_entry;
-
+typedef void (*zend_fcall_hook)(const zend_execute_data *call, int mode);
 
 struct _zend_compiler_globals {
 	zend_stack loop_var_stack;
@@ -169,6 +169,7 @@ struct _zend_executor_globals {
 
 	HashTable *in_autoload;
 	zend_function *autoload_func;
+	zend_fcall_hook fcall_hook;
 	zend_bool full_tables_cleanup;
 
 	/* for extended information support */

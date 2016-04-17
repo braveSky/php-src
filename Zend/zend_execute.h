@@ -30,8 +30,6 @@
 
 BEGIN_EXTERN_C()
 struct _zend_fcall_info;
-ZEND_API extern void (*zend_execute_ex)(zend_execute_data *execute_data);
-ZEND_API extern void (*zend_execute_internal)(zend_execute_data *execute_data, zval *return_value);
 
 void init_executor(void);
 void shutdown_executor(void);
@@ -39,8 +37,11 @@ void shutdown_destructors(void);
 ZEND_API void zend_init_execute_data(zend_execute_data *execute_data, zend_op_array *op_array, zval *return_value);
 ZEND_API zend_execute_data *zend_create_generator_execute_data(zend_execute_data *call, zend_op_array *op_array, zval *return_value);
 ZEND_API void zend_execute(zend_op_array *op_array, zval *return_value);
+ZEND_API void zend_execute_ex(zend_execute_data *execute_data);
 ZEND_API void execute_ex(zend_execute_data *execute_data);
 ZEND_API void execute_internal(zend_execute_data *execute_data, zval *return_value);
+ZEND_API zend_fcall_hook zend_get_fcall_hook();
+ZEND_API zend_fcall_hook zend_set_fcall_hook(zend_fcall_hook hook);
 ZEND_API zend_class_entry *zend_lookup_class(zend_string *name);
 ZEND_API zend_class_entry *zend_lookup_class_ex(zend_string *name, const zval *key, int use_autoload);
 ZEND_API zend_class_entry *zend_get_called_scope(zend_execute_data *ex);
@@ -359,6 +360,19 @@ void zend_cleanup_unfinished_execution(zend_execute_data *execute_data, uint32_t
 			(opline)--;                                  \
 		}                                                \
 	} while (0)
+
+#define FCALL_HOOK_ENTER   0
+#define FCALL_HOOK_RETURN  1
+
+#define ZEND_VM_FCALL_ENTER(call) \
+	if (UNEXPECTED(EG(fcall_hook))) { \
+		(EG(fcall_hook))(call, FCALL_HOOK_ENTER); \
+	}
+
+#define ZEND_VM_FCALL_RETURN(call) \
+	if (UNEXPECTED(EG(fcall_hook))) { \
+		EG(fcall_hook)(call, FCALL_HOOK_RETURN); \
+	}
 
 END_EXTERN_C()
 

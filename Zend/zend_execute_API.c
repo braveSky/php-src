@@ -39,9 +39,6 @@
 #include <sys/time.h>
 #endif
 
-ZEND_API void (*zend_execute_ex)(zend_execute_data *execute_data);
-ZEND_API void (*zend_execute_internal)(zend_execute_data *execute_data, zval *return_value);
-
 /* true globals */
 ZEND_API const zend_fcall_info empty_fcall_info = { 0, NULL, {{0}, {{0}}, {0}}, NULL, NULL, NULL, 0, 0 };
 ZEND_API const zend_fcall_info_cache empty_fcall_info_cache = { 0, NULL, NULL, NULL, NULL };
@@ -80,6 +77,26 @@ static void zend_handle_sigsegv(int dummy) /* {{{ */
 }
 /* }}} */
 #endif
+
+ZEND_API zend_fcall_hook zend_get_fcall_hook() /* {{{ */ {
+	return EG(fcall_hook);
+}
+/* }}} */
+
+ZEND_API zend_fcall_hook zend_set_fcall_hook(zend_fcall_hook hook) /* {{{ */ {
+	zend_fcall_hook orig_hook = EG(fcall_hook);
+
+	EG(fcall_hook) = hook;
+
+	return orig_hook;
+}
+/* }}} */
+
+ZEND_API void zend_execute_ex(zend_execute_data *call) /* {{{ */
+{
+	execute_ex(call);
+}
+/* }}} */
 
 static void zend_extension_activator(zend_extension *extension) /* {{{ */
 {
@@ -145,6 +162,7 @@ void init_executor(void) /* {{{ */
 
 	EG(in_autoload) = NULL;
 	EG(autoload_func) = NULL;
+	EG(fcall_hook) = NULL;
 	EG(error_handling) = EH_NORMAL;
 
 	zend_vm_stack_init();
@@ -874,12 +892,9 @@ int zend_call_function(zend_fcall_info *fci, zend_fcall_info_cache *fci_cache) /
 		call->prev_execute_data = EG(current_execute_data);
 		call->return_value = NULL; /* this is not a constructor call */
 		EG(current_execute_data) = call;
-		if (EXPECTED(zend_execute_internal == NULL)) {
-			/* saves one function call if zend_execute_internal is not used */
-			func->internal_function.handler(call, fci->retval);
-		} else {
-			zend_execute_internal(call, fci->retval);
-		}
+		ZEND_VM_FCALL_ENTER(call);
+		func->internal_function.handler(call, fci->retval);
+		ZEND_VM_FCALL_RETURN(call);
 		EG(current_execute_data) = call->prev_execute_data;
 		zend_vm_stack_free_args(call);
 
